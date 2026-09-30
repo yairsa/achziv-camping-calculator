@@ -527,3 +527,85 @@ console.log('activities tests passed');
   assert.strictEqual(ctx.tourSync_(P(ctx.tourSeedRows_()).map(r => ({ tour: r[0], step: r[1], key: r[2], title: r[3], text: r[4] }))), null);
 }
 console.log('tour text tests passed');
+
+// ---------- managing page: organizers' login (admin-plan §4.1) ----------
+{
+  let now = 2e12;
+  const saved = [];
+  function adminStore() {
+    let orgs = {};
+    return {
+      orgs: () => orgs,
+      saveOrgs: (o) => { orgs = o; saved.push(JSON.stringify(o)); },
+      salt: () => crypto.randomBytes(8).toString('hex'),
+      hash: (salt, pw) => crypto.createHash('sha256').update(salt + '|' + pw).digest('hex'),
+      sign: (body) => crypto.createHmac('sha256', 'test-key').update(body).digest('hex'),
+      nowMs: () => now
+    };
+  }
+  const adm = adminStore(), A = (req) => P(ctx.route(req, null, null, null, adm));
+  const login = (name, password) => A({ action: 'adminLogin', name, password });
+
+  // setting a password: length rules; only a salted hash is kept
+  assert.throws(() => ctx.setAdminPassword_(adm, 'יאיר', 'short'), e => e.code === 'bad_password');
+  assert.throws(() => ctx.setAdminPassword_(adm, 'י', 'long enough'), e => e.code === 'bad_user');
+  ctx.setAdminPassword_(adm, ' יאיר  ', 'סיסמה-טובה-1');
+  ctx.setAdminPassword_(adm, 'Dana', 'dana-password');
+  assert.ok(!saved.some(s => s.includes('סיסמה-טובה-1')), 'a password is stored in clear');
+  assert.strictEqual(adm.orgs()['יאיר'].ver, 1);
+
+  // right password: a token for 7 days; the name matches like family names (case, spaces)
+  let r = login('יאיר', 'סיסמה-טובה-1');
+  assert.ok(r.ok); assert.strictEqual(r.name, 'יאיר'); assert.strictEqual(r.exp, now + 7 * 24 * 3600 * 1000);
+  const tok = r.token;
+  assert.deepStrictEqual(A({ action: 'adminMe', token: tok }), { ok: true, name: 'יאיר' });
+  assert.ok(login('  dana ', 'dana-password').ok);
+
+  // wrong password, unknown name: the same answer
+  assert.strictEqual(login('יאיר', 'סיסמה-טובה-2').error, 'wrong_password');
+  assert.strictEqual(login('nobody', 'whatever-1').error, 'wrong_password');
+  assert.strictEqual(login('יאיר', undefined).error, 'wrong_password');
+
+  // lockout: 5 wrong in a row locks that name for 15 minutes, even with the right password; others unaffected
+  for (let i = 0; i < 3; i++) login('יאיר', 'nope-nope');
+  assert.strictEqual(login('יאיר', 'nope-nope').error, 'locked');
+  assert.strictEqual(login('יאיר', 'סיסמה-טובה-1').error, 'locked');
+  assert.ok(login('dana', 'dana-password').ok);
+  assert.ok(A({ action: 'adminMe', token: tok }).ok);                          // an open login is not locked out
+  now += 14 * 60 * 1000;
+  assert.strictEqual(login('יאיר', 'סיסמה-טובה-1').error, 'locked');
+  now += 2 * 60 * 1000;
+  r = login('יאיר', 'סיסמה-טובה-1');
+  assert.ok(r.ok); assert.strictEqual(adm.orgs()['יאיר'].fails, 0);
+  assert.strictEqual(login('יאיר', 'nope-nope').error, 'wrong_password');     // the count started again
+
+  // forged or broken tokens
+  const [n, v, e, sig] = tok.split('.');
+  const bad = (t) => assert.strictEqual(A({ action: 'adminMe', token: t }).error, 'auth', String(t));
+  bad(undefined); bad(''); bad('abc'); bad(tok + '.x');
+  bad([n, v, +e + 1e9, sig].join('.'));                                      // a longer expiry, old signature
+  bad([encodeURIComponent('dana'), v, e, sig].join('.'));                     // someone else's name
+  bad([n, v, e, sig.replace(/.$/, c => c === '0' ? '1' : '0')].join('.'));
+  bad(['%E0%A4%A', v, e, adm.sign(['%E0%A4%A', v, e].join('.'))].join('.')); // signed, but not a valid name
+
+  // expiry
+  const t2 = login('dana', 'dana-password').token;
+  now += 7 * 24 * 3600 * 1000 - 1;
+  assert.ok(A({ action: 'adminMe', token: t2 }).ok);
+  now += 1;
+  bad(t2);
+
+  // a new password ends that organizer's open logins, and only theirs
+  const ty = login('יאיר', 'סיסמה-טובה-1').token, td = login('dana', 'dana-password').token;
+  ctx.setAdminPassword_(adm, 'יאיר', 'סיסמה-חדשה-2');
+  assert.strictEqual(adm.orgs()['יאיר'].ver, 2);
+  bad(ty);
+  assert.ok(A({ action: 'adminMe', token: td }).ok);
+  assert.strictEqual(login('יאיר', 'סיסמה-טובה-1').error, 'wrong_password');
+  assert.ok(A({ action: 'adminMe', token: login('יאיר', 'סיסמה-חדשה-2').token }).ok);
+
+  // a bad name is rejected before anything is looked up
+  assert.strictEqual(login('x', 'whatever-1').error, 'bad_user');
+  assert.ok(ctx.sameText_('abc', 'abc') && !ctx.sameText_('abc', 'abd') && !ctx.sameText_('abc', 'ab'));
+}
+console.log('admin login tests passed');

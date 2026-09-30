@@ -2,7 +2,7 @@
 
 > **Open questions for Yair:** none. The decisions in §2 are derived; say if one is wrong.
 
-**Status:** planned 01/10/2026, not started. Next: the first unticked box in §4.
+**Status:** §4.1 done 01/10/2026 (backend only, not deployed). Next: the first unticked box in §4.2.
 
 ## 1. The brief (Yair, 01/10/2026)
 
@@ -34,10 +34,12 @@
 ## 4. Tasks
 
 #### 4.1 Auth
-- [ ] Script Properties: organizers `{name, salt, hash, ver}` + an HMAC key; menu **מארגנים → סיסמת ניהול** (name + password prompts, adds or replaces that organizer, bumps `ver`)
-- [ ] Actions `adminLogin {name, password}` → `{token, name, exp}` · every admin action checks the token (signature, expiry, `ver`); lockout after 5 wrong passwords per name, 15 minutes
-- [ ] `backend.test.js`: right / wrong password, lockout and its expiry, expired token, token after a password change, a forged token
-- [ ] Gate: backend tests green, `python backend/build.py --check`
+- [x] Script Properties: organizers `{name, salt, hash, ver}` + an HMAC key; menu **מארגנים → סיסמת ניהול** (name + password prompts, adds or replaces that organizer, bumps `ver`)
+- [x] Actions `adminLogin {name, password}` → `{token, name, exp}` · every admin action checks the token (signature, expiry, `ver`); lockout after 5 wrong passwords per name, 15 minutes
+- [x] `backend.test.js`: right / wrong password, lockout and its expiry, expired token, token after a password change, a forged token
+- [x] Gate: backend tests green, `python backend/build.py --check`
+  - done: `adminStore_` keeps `ADMIN_ORGS` + `ADMIN_KEY` in Script Properties. The token is `name.ver.exp.hmac`, so no base64 is needed. Every token failure is error `auth`, so the page just goes back to login. An unknown name gets `wrong_password`, so names are not confirmed. `adminMe {token}` is the page's cheap "still logged in?" call. On the old backend it answers `bad_request`, which means "server not updated yet". Admin actions get every store: `route(req, store, tstore, astore, adm)`
+  - 4 mutations (version check, expiry, lockout, unknown-name answer) all turned the tests red
 
 #### 4.2 Waiting list and review
 - [ ] Action `adminQueue` → pending tips (with the "דומה ל…" hint), comments (with their tip's title), gear items; counts

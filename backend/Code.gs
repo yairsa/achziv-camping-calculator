@@ -22,6 +22,9 @@
 //   deleteActivity {user, pin, id}                                     -> its family cancels it
 //   join  {user, pin, id, count}  /  leave {user, pin, id}             -> set / clear this family's participants
 //   (every activity write needs a registered family, and answers with the fresh list)
+//   adminLogin {name, password}                                        -> {token, name, exp}: the managing page's login
+//   adminMe    {token}                                                 -> {name} while the token is valid
+//   (every other admin action carries {token}; any token problem answers error 'auth')
 
 var SHEET_NAME = '\u05d4\u05e8\u05e9\u05de\u05d5\u05ea';
 var HEAD = ['\u05e9\u05dd \u05de\u05e9\u05ea\u05de\u05e9', '\u05e9\u05dd \u05dc\u05d4\u05e6\u05d2\u05d4', '\u05e2\u05d5\u05d3\u05db\u05df', '\u05dc\u05e0\u05d9\u05dd (\u05de\u05e7\u05e1\u05d9\u05de\u05d5\u05dd)', '\u05dc\u05e0\u05d9\u05dd \u05dc\u05e4\u05d9 \u05dc\u05d9\u05dc\u05d4', '\u05de\u05d7\u05d9\u05e8 \u05de\u05dc\u05d0', '\u05de\u05d7\u05d9\u05e8 \u05e7\u05d1\u05d5\u05e6\u05ea\u05d9',
@@ -49,6 +52,9 @@ function doPost(e) {
       try { CacheService.getScriptCache().put(cacheKey, out, 300); } catch (x) { /* too big to cache: still served */ }
       return ContentService.createTextOutput(out).setMimeType(ContentService.MimeType.JSON);
     }
+    if (req && /^admin/.test(req.action)) {
+      return json_(route(req, sheetStore_(), tipsStore_(), activitiesStore_(), adminStore_()));
+    }
     var tipAction = req && (req.action === 'submitTip' || req.action === 'submitComment' || req.action === 'submitGear');
     var actAction = !!(req && ACT_WRITES[req.action]);
     var res = route(req, tipAction ? null : sheetStore_(), tipAction ? tipsStore_() : null, actAction ? activitiesStore_() : null);
@@ -63,8 +69,8 @@ function doPost(e) {
 function json_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 
 // ---------- pure logic (store is injected so it can be tested outside Google) ----------
-// store = registrations, tstore = tips, comments and gear, astore = activities.
-function route(req, store, tstore, astore) {
+// store = registrations, tstore = tips, comments and gear, astore = activities, adm = organizers' logins.
+function route(req, store, tstore, astore, adm) {
   try {
     switch (req && req.action) {
       case 'save': return save_(req, store);
@@ -82,6 +88,8 @@ function route(req, store, tstore, astore) {
       case 'deleteActivity': return deleteActivity_(req, store, astore);
       case 'join': return join_(req, store, astore);
       case 'leave': return leave_(req, store, astore);
+      case 'adminLogin': return adminLogin_(req, adm);
+      case 'adminMe': return adminMe_(req, adm);
       default: return { ok: false, error: 'bad_request' };
     }
   } catch (x) {
@@ -315,7 +323,25 @@ function onOpen() {
     .addItem('\u05d4\u05e4\u05e2\u05dc\u05ea \u05d4\u05ea\u05e8\u05d0\u05d5\u05ea', 'enableAlerts')
     .addSeparator()
     .addItem('\u05d4\u05d5\u05e1\u05e4\u05ea 3 \u05e4\u05e2\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea \u05dc\u05d3\u05d5\u05d2\u05de\u05d4', 'addDemoActivities')
+    .addSeparator()
+    .addItem('\u05e1\u05d9\u05e1\u05de\u05ea \u05e0\u05d9\u05d4\u05d5\u05dc', 'setAdminPassword')
     .addToUi();
+}
+// Adds an organizer for the managing page, or replaces that organizer's password (which ends their open logins).
+function setAdminPassword() {
+  var ui = SpreadsheetApp.getUi();
+  var n = ui.prompt('\u05e1\u05d9\u05e1\u05de\u05ea \u05e0\u05d9\u05d4\u05d5\u05dc', '\u05e9\u05dd \u05d4\u05de\u05d0\u05e8\u05d2\u05df (\u05db\u05da \u05d4\u05d5\u05d0 \u05d9\u05d5\u05e4\u05d9\u05e2 \u05d1\u05d9\u05d5\u05de\u05df \u05d4\u05e0\u05d9\u05d4\u05d5\u05dc):', ui.ButtonSet.OK_CANCEL);
+  if (n.getSelectedButton() !== ui.Button.OK) return;
+  var p = ui.prompt('\u05e1\u05d9\u05e1\u05de\u05ea \u05e0\u05d9\u05d4\u05d5\u05dc', '\u05e1\u05d9\u05e1\u05de\u05d4 \u05d7\u05d3\u05e9\u05d4, \u05dc\u05e4\u05d7\u05d5\u05ea ' + ADMIN_PW_MIN + ' \u05ea\u05d5\u05d5\u05d9\u05dd. \u05d0\u05dd \u05dc\u05e9\u05dd \u05d4\u05d6\u05d4 \u05db\u05d1\u05e8 \u05d4\u05d9\u05d9\u05ea\u05d4 \u05e1\u05d9\u05e1\u05de\u05d4, ' +
+    '\u05d4\u05d9\u05d0 \u05de\u05e4\u05e1\u05d9\u05e7\u05d4 \u05dc\u05e2\u05d1\u05d5\u05d3 \u05d5\u05db\u05dc \u05d4\u05db\u05e0\u05d9\u05e1\u05d5\u05ea \u05d4\u05e4\u05ea\u05d5\u05d7\u05d5\u05ea \u05e9\u05dc\u05d5 \u05de\u05ea\u05e0\u05ea\u05e7\u05d5\u05ea:', ui.ButtonSet.OK_CANCEL);
+  if (p.getSelectedButton() !== ui.Button.OK) return;
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try { setAdminPassword_(adminStore_(), n.getResponseText(), p.getResponseText()); } catch (x) {
+    ui.alert(x.code === 'bad_password' ? '\u05d4\u05e1\u05d9\u05e1\u05de\u05d4 \u05e7\u05e6\u05e8\u05d4 \u05de\u05d3\u05d9: \u05dc\u05e4\u05d7\u05d5\u05ea ' + ADMIN_PW_MIN + ' \u05ea\u05d5\u05d5\u05d9\u05dd.' : '\u05d4\u05e9\u05dd \u05e6\u05e8\u05d9\u05da \u05dc\u05d4\u05d9\u05d5\u05ea \u05d1\u05d0\u05d5\u05e8\u05da 2 \u05e2\u05d3 40 \u05ea\u05d5\u05d5\u05d9\u05dd.');
+    return;
+  } finally { lock.releaseLock(); }
+  ui.alert('\u05e0\u05e9\u05de\u05e8. \u05d0\u05e4\u05e9\u05e8 \u05dc\u05d4\u05d9\u05db\u05e0\u05e1 \u05dc\u05d3\u05e3 \u05d4\u05e0\u05d9\u05d4\u05d5\u05dc \u05e2\u05dd \u05d4\u05e9\u05dd \u05d5\u05d4\u05e1\u05d9\u05e1\u05de\u05d4 \u05d4\u05d0\u05dc\u05d4.');
 }
 // Three example activities, one per audience, so families see what the tab is for. Safe to run twice
 // (fixed client ids). Hide one by setting its status to \u05d4\u05d5\u05e1\u05ea\u05e8 in the \u05e4\u05e2\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea tab.
@@ -1160,6 +1186,58 @@ function organizerActivities_(pub) {
   });
 }
 
+// ---------- managing page: organizers' login (docs/admin-plan.md \u00a74.1) ----------
+// Each organizer has a name and a password, set from the sheet menu \u05de\u05d0\u05e8\u05d2\u05e0\u05d9\u05dd -> \u05e1\u05d9\u05e1\u05de\u05ea \u05e0\u05d9\u05d4\u05d5\u05dc. Only a salted hash is
+// kept (Script Properties, never the repo or the site). Login hands back a token signed with a key that also lives
+// in Script Properties: organizer . password version . expiry . signature. A new password bumps the version, so
+// that organizer's old tokens stop working. adm = the admin store, injected so this can be tested outside Google.
+var ADMIN_TOKEN_MS = 7 * 24 * 60 * 60 * 1000;
+var ADMIN_PW_MIN = 8;
+
+function adminName_(n) { var k = normUser_(n); if (k.length < 2 || k.length > 40) fail_('bad_user'); return k; }
+function setAdminPassword_(adm, name, password) {
+  var key = adminName_(name);
+  password = String(password == null ? '' : password);
+  if (password.length < ADMIN_PW_MIN || password.length > 200) fail_('bad_password');
+  var orgs = adm.orgs(), old = orgs[key], salt = adm.salt();
+  orgs[key] = { name: String(name).trim().replace(/\s+/g, ' '), salt: salt, hash: adm.hash(salt, password),
+                ver: (old ? +old.ver || 0 : 0) + 1, fails: 0, lastFail: 0 };
+  adm.saveOrgs(orgs);
+  return orgs[key];
+}
+// Compares every character, so a signature cannot be guessed one character at a time from response times.
+function sameText_(a, b) {
+  a = String(a); b = String(b);
+  var d = a.length ^ b.length;
+  for (var i = 0; i < Math.max(a.length, b.length); i++) d |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  return d === 0;
+}
+function adminLogin_(req, adm) {
+  var key = adminName_(req.name), orgs = adm.orgs(), org = orgs[key], now = adm.nowMs();
+  if (!org) fail_('wrong_password');                 // the same answer as a wrong password: names are not confirmed
+  if (org.fails >= MAX_FAILS) {
+    if (now - org.lastFail < LOCK_MS) fail_('locked');
+    org.fails = 0;
+  }
+  if (!sameText_(adm.hash(org.salt, String(req.password == null ? '' : req.password)), org.hash)) {
+    org.fails += 1; org.lastFail = now; adm.saveOrgs(orgs);
+    fail_(org.fails >= MAX_FAILS ? 'locked' : 'wrong_password');
+  }
+  if (org.fails) { org.fails = 0; adm.saveOrgs(orgs); }
+  var exp = now + ADMIN_TOKEN_MS, body = encodeURIComponent(key) + '.' + org.ver + '.' + exp;
+  return { ok: true, token: body + '.' + adm.sign(body), name: org.name, exp: exp };
+}
+// Every admin action starts here. Any problem (forged, expired, password changed) is 'auth': the page logs in again.
+function adminAuth_(req, adm) {
+  var p = String(req.token || '').split('.'), key = null;
+  if (p.length !== 4 || !sameText_(adm.sign(p.slice(0, 3).join('.')), p[3])) fail_('auth');
+  try { key = decodeURIComponent(p[0]); } catch (x) { fail_('auth'); }
+  var org = adm.orgs()[key];
+  if (!org || String(org.ver) !== p[1] || !(+p[2] > adm.nowMs())) fail_('auth');
+  return { key: key, name: org.name };
+}
+function adminMe_(req, adm) { return { ok: true, name: adminAuth_(req, adm).name }; }
+
 // ---------- Google Sheet store ----------
 function sheetStore_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -1360,5 +1438,27 @@ function activitiesStore_() {
     addJoin: function (r) { add(ACT_TABS.joins, JOIN_HEAD, JOIN_COL, r); },
     updateJoin: function (r) { update(ACT_TABS.joins, JOIN_HEAD, JOIN_COL, r); },
     now: function () { return new Date(); }
+  };
+}
+
+// Organizers' logins live in Script Properties: ADMIN_ORGS = {name: {name, salt, hash, ver, fails, lastFail}},
+// ADMIN_KEY = the token-signing key, made on first use. Neither is visible in the sheet.
+function adminStore_() {
+  var props = PropertiesService.getScriptProperties(), orgs = null, U = Utilities;
+  function hex(bytes) { return bytes.map(function (b) { return ((b + 256) % 256).toString(16).padStart(2, '0'); }).join(''); }
+  return {
+    orgs: function () {
+      if (!orgs) { try { orgs = JSON.parse(props.getProperty('ADMIN_ORGS') || '{}'); } catch (x) { orgs = {}; } }
+      return orgs;
+    },
+    saveOrgs: function (o) { orgs = o; props.setProperty('ADMIN_ORGS', JSON.stringify(o)); },
+    salt: function () { return U.getUuid(); },
+    hash: function (salt, pw) { return hex(U.computeDigest(U.DigestAlgorithm.SHA_256, salt + '|' + pw, U.Charset.UTF_8)); },
+    sign: function (body) {
+      var k = props.getProperty('ADMIN_KEY');
+      if (!k) { k = U.getUuid() + U.getUuid(); props.setProperty('ADMIN_KEY', k); }
+      return hex(U.computeHmacSha256Signature(body, k, U.Charset.UTF_8));
+    },
+    nowMs: function () { return Date.now(); }
   };
 }
