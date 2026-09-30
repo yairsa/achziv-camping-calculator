@@ -2,7 +2,7 @@
 
 > **Open questions for Yair:** none. Q1 and Q2 were answered 30/09/2026; the answers are in §4 and §5.
 
-**Status:** designed and decided 30/09/2026. **Built** — §6.1 backend and §6.2 site done. The site is pushed and says "בקרוב" until §6.3: Yair pastes and deploys `Code.gs`.
+**Status:** designed and decided 30/09/2026. **Live** 30/09/2026. The backend is deployed and the site is live. Left: §6.3 live check, completed by the first real approval.
 
 ## 1. What it is
 
