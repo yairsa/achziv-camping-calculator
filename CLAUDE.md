@@ -25,4 +25,4 @@ Static RTL site on GitHub Pages (`main` = live, about 1 minute after a push; no 
 - Public by design: registered family names and people per night. Never prices per family, codes, or calculator details.
 
 ## Work queue
-Plans with task lists live in `docs/`: `tips-plan.md`, `gear-plan.md`, `activities-plan.md`, `admin-plan.md` (future). Tick boxes in the same commit as the code.
+Plans with task lists live in `docs/`: `tips-plan.md`, `gear-plan.md`, `activities-plan.md`, `tour-plan.md` (next: guided tour, disclaimer, share), `admin-plan.md` (future). Tick boxes in the same commit as the code.
