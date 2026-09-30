@@ -9,6 +9,12 @@
 // The name each tour carries in the sheet's סיור column.
 var TOUR_NAMES_ = { welcome: 'פתיחה', gear: 'ציוד', acts: 'פעילויות', tips: 'טיפים' };
 
+// Built-in texts that were replaced here after a sheet was created with them. A sheet cell still holding one was
+// never edited, so the script moves it to the current text. Key: tour/key.
+var TOUR_RETIRED_ = {
+  'welcome/share': ['מכירים עוד משפחות מהקבוצה? שלחו להן את האתר. הסיור הזה חוזר בכל זמן בכפתור ?.']
+};
+
 var TOUR_TEXTS_ = [
   { tour: 'welcome', key: 'hello', title: 'ברוכים הבאים!',
     text: 'האתר עוזר לקבוצה להתארגן לקמפינג באכזיב: חישוב עלות הלינה, מידע על המקום, ' +

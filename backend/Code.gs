@@ -803,6 +803,12 @@ function pendingDigest_(ts, seen, sheetUrl) {
 // The name each tour carries in the sheet's \u05e1\u05d9\u05d5\u05e8 column.
 var TOUR_NAMES_ = { welcome: '\u05e4\u05ea\u05d9\u05d7\u05d4', gear: '\u05e6\u05d9\u05d5\u05d3', acts: '\u05e4\u05e2\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea', tips: '\u05d8\u05d9\u05e4\u05d9\u05dd' };
 
+// Built-in texts that were replaced here after a sheet was created with them. A sheet cell still holding one was
+// never edited, so the script moves it to the current text. Key: tour/key.
+var TOUR_RETIRED_ = {
+  'welcome/share': ['\u05de\u05db\u05d9\u05e8\u05d9\u05dd \u05e2\u05d5\u05d3 \u05de\u05e9\u05e4\u05d7\u05d5\u05ea \u05de\u05d4\u05e7\u05d1\u05d5\u05e6\u05d4? \u05e9\u05dc\u05d7\u05d5 \u05dc\u05d4\u05df \u05d0\u05ea \u05d4\u05d0\u05ea\u05e8. \u05d4\u05e1\u05d9\u05d5\u05e8 \u05d4\u05d6\u05d4 \u05d7\u05d5\u05d6\u05e8 \u05d1\u05db\u05dc \u05d6\u05de\u05df \u05d1\u05db\u05e4\u05ea\u05d5\u05e8 ?.']
+};
+
 var TOUR_TEXTS_ = [
   { tour: 'welcome', key: 'hello', title: '\u05d1\u05e8\u05d5\u05db\u05d9\u05dd \u05d4\u05d1\u05d0\u05d9\u05dd!',
     text: '\u05d4\u05d0\u05ea\u05e8 \u05e2\u05d5\u05d6\u05e8 \u05dc\u05e7\u05d1\u05d5\u05e6\u05d4 \u05dc\u05d4\u05ea\u05d0\u05e8\u05d2\u05df \u05dc\u05e7\u05de\u05e4\u05d9\u05e0\u05d2 \u05d1\u05d0\u05db\u05d6\u05d9\u05d1: \u05d7\u05d9\u05e9\u05d5\u05d1 \u05e2\u05dc\u05d5\u05ea \u05d4\u05dc\u05d9\u05e0\u05d4, \u05de\u05d9\u05d3\u05e2 \u05e2\u05dc \u05d4\u05de\u05e7\u05d5\u05dd, ' +
@@ -871,10 +877,39 @@ function tourSeedRows_() {
   });
 }
 
+// The tab follows the site: a step added in tour-texts.js after the tab was made gets its row, in its place, and
+// the rows keep the site's order and numbering. Yair's text moves with its row; a cell still holding a retired
+// built-in text (TOUR_RETIRED_) gets the current one. Rows with an unknown key stay, at the end.
+// rows: as read ({tour, step, key, title, text}). Returns the tab's new values, or null when it is already right.
+function tourSync_(rows) {
+  var byName = tourIds_(), have = {}, rest = [];
+  rows.forEach(function (r) {
+    var id = byName[String(r.tour).trim()], k = id + '/' + String(r.key).trim();
+    if (id && !have[k]) have[k] = r; else rest.push(r);
+  });
+  var n = {}, out = [], same = true;
+  TOUR_TEXTS_.forEach(function (d, i) {
+    var k = d.tour + '/' + d.key, r = have[k], retired = TOUR_RETIRED_[k] || [];
+    n[d.tour] = (n[d.tour] || 0) + 1;
+    var title = r ? r.title : d.title, text = r ? r.text : d.text;
+    if (r && retired.indexOf(String(text).trim()) >= 0) text = d.text;
+    var row = [TOUR_NAMES_[d.tour], n[d.tour], d.key, title, text];
+    if (!r || rows[i] !== r || +r.step !== n[d.tour] || text !== r.text) same = false;
+    out.push(row);
+  });
+  if (same) return null;
+  rest.forEach(function (r) { out.push([r.tour, r.step, r.key, r.title, r.text]); });
+  return out;
+}
+function tourIds_() {
+  var byName = {};
+  Object.keys(TOUR_NAMES_).forEach(function (id) { byName[TOUR_NAMES_[id]] = id; byName[id] = id; });
+  return byName;
+}
+
 // Public: the sheet's texts for known steps, empty cells left out (the site falls back to its own text).
 function tourPublic_(ts) {
-  var byName = {}, known = {};
-  Object.keys(TOUR_NAMES_).forEach(function (id) { byName[TOUR_NAMES_[id]] = id; byName[id] = id; });
+  var byName = tourIds_(), known = {};
   TOUR_TEXTS_.forEach(function (r) { known[r.tour + '/' + r.key] = true; });
   var steps = [];
   (ts && ts.tour ? ts.tour() : []).forEach(function (r) {
@@ -1259,7 +1294,16 @@ function tipsStore_() {
     gear: function () { return gearRows || (gearRows = read(gearSheet(), GEAR_COL, GEAR_HEAD.length)); },
     addGear: function (r) { add(gearSheet(), store.gear(), r, GEAR_COL); },
     updateGear: function (r) { update(gearSheet(), r, GEAR_COL, GEAR_HEAD.length); },
-    tour: function () { return tourRows || (tourRows = readTour()); },
+    tour: function () {
+      if (tourRows) return tourRows;
+      tourRows = readTour();
+      var fix = tourSync_(tourRows);           // a new step, or the order changed on the site: follow it
+      if (fix) {
+        tourSheet().getRange(2, 1, fix.length, TOUR_HEAD.length).setNumberFormat('@').setValues(fix).setWrap(true);
+        tourRows = readTour();
+      }
+      return tourRows;
+    },
     now: function () { return new Date(); }       // a real date: the sheet shows it in its own (day-first) locale
   };
   return store;

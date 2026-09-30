@@ -574,10 +574,39 @@ function tourSeedRows_() {
   });
 }
 
+// The tab follows the site: a step added in tour-texts.js after the tab was made gets its row, in its place, and
+// the rows keep the site's order and numbering. Yair's text moves with its row; a cell still holding a retired
+// built-in text (TOUR_RETIRED_) gets the current one. Rows with an unknown key stay, at the end.
+// rows: as read ({tour, step, key, title, text}). Returns the tab's new values, or null when it is already right.
+function tourSync_(rows) {
+  var byName = tourIds_(), have = {}, rest = [];
+  rows.forEach(function (r) {
+    var id = byName[String(r.tour).trim()], k = id + '/' + String(r.key).trim();
+    if (id && !have[k]) have[k] = r; else rest.push(r);
+  });
+  var n = {}, out = [], same = true;
+  TOUR_TEXTS_.forEach(function (d, i) {
+    var k = d.tour + '/' + d.key, r = have[k], retired = TOUR_RETIRED_[k] || [];
+    n[d.tour] = (n[d.tour] || 0) + 1;
+    var title = r ? r.title : d.title, text = r ? r.text : d.text;
+    if (r && retired.indexOf(String(text).trim()) >= 0) text = d.text;
+    var row = [TOUR_NAMES_[d.tour], n[d.tour], d.key, title, text];
+    if (!r || rows[i] !== r || +r.step !== n[d.tour] || text !== r.text) same = false;
+    out.push(row);
+  });
+  if (same) return null;
+  rest.forEach(function (r) { out.push([r.tour, r.step, r.key, r.title, r.text]); });
+  return out;
+}
+function tourIds_() {
+  var byName = {};
+  Object.keys(TOUR_NAMES_).forEach(function (id) { byName[TOUR_NAMES_[id]] = id; byName[id] = id; });
+  return byName;
+}
+
 // Public: the sheet's texts for known steps, empty cells left out (the site falls back to its own text).
 function tourPublic_(ts) {
-  var byName = {}, known = {};
-  Object.keys(TOUR_NAMES_).forEach(function (id) { byName[TOUR_NAMES_[id]] = id; byName[id] = id; });
+  var byName = tourIds_(), known = {};
   TOUR_TEXTS_.forEach(function (r) { known[r.tour + '/' + r.key] = true; });
   var steps = [];
   (ts && ts.tour ? ts.tour() : []).forEach(function (r) {
@@ -948,7 +977,16 @@ function tipsStore_() {
     gear: function () { return gearRows || (gearRows = read(gearSheet(), GEAR_COL, GEAR_HEAD.length)); },
     addGear: function (r) { add(gearSheet(), store.gear(), r, GEAR_COL); },
     updateGear: function (r) { update(gearSheet(), r, GEAR_COL, GEAR_HEAD.length); },
-    tour: function () { return tourRows || (tourRows = readTour()); },
+    tour: function () {
+      if (tourRows) return tourRows;
+      tourRows = readTour();
+      var fix = tourSync_(tourRows);           // a new step, or the order changed on the site: follow it
+      if (fix) {
+        tourSheet().getRange(2, 1, fix.length, TOUR_HEAD.length).setNumberFormat('@').setValues(fix).setWrap(true);
+        tourRows = readTour();
+      }
+      return tourRows;
+    },
     now: function () { return new Date(); }       // a real date: the sheet shows it in its own (day-first) locale
   };
   return store;

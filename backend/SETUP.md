@@ -51,4 +51,5 @@ Every tour bubble's title and text is in the **הדרכה** tab of the **registr
 - **Edit:** change **כותרת** or **טקסט**. The site picks it up within about 5 minutes, the next time a visitor opens a tour (a tour already open doesn't change mid-way).
 - **Format:** plain text. An empty line (Ctrl+Enter twice inside the cell) starts a new paragraph, and `**like this**` is bold. HTML is shown as plain text, not run.
 - **Back to the original:** clear the cell. An empty **כותרת** or **טקסט** shows the site's built-in text, so a bubble is never empty.
+- **The tab follows the site:** when a step is added or the order changes on the site, the script puts the rows in the site's order and adds the new step's row. Your text moves with its row.
 - **Don't change** **סיור** or **מפתח**: they tie a row to its step, and where its arrow points stays in the site's code. A row with an unknown key is ignored, so adding or removing steps isn't possible from the sheet.

@@ -104,6 +104,8 @@
 
 - [x] Welcome tour reordered (Yair, 30/09/2026: *"the מחירון bubble should be after the tabs bubble, then we continue with how to fill the form; the 2nd bubble should explain the tutorial is available through the ? button"*): hello → **? button** (new step `help`, the arrow on the button) → tabs → מחירון → the form → share. The "? replays" line moved from the last bubble to step 2. Now 9 steps
 
+- [x] The tab follows the site (`tourSync_`): Yair deployed the first Code.gs, so הדרכה was made in the old order without the `help` row, and the seed-once design would never have added it. On read, a missing step gets its row in its place, rows take the site's order and numbering, hand edits move with their row, a cell still holding a retired built-in text (`TOUR_RETIRED_`) gets the new one. Needs another paste and deploy
+
 #### 5.4 Gate and go-live
 - [x] All 9 gates green; push; live check (built-in text, since the old script is still deployed) — 78f3a9f; live 30/09: built-in text with bold, nothing cached (old script), no errors, no sideways scroll at 360px
 - [ ] Hand Yair `Code.gs` on the clipboard to paste and deploy a new version. Then a live check that the tab הדרכה appears and an edit shows on the site
