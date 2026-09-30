@@ -2,7 +2,7 @@
 
 > **Open questions for Yair:** 1 — [Q1 sections](#q1) (not blocking: built with the proposal, easy to change).
 
-**Status:** built and on the site, 30/09/2026 (Yair's brief below). The site uses the starter list until Yair deploys the new `Code.gs` (§5.3).
+**Status:** live, 30/09/2026 (Yair's brief below). The backend is deployed, and the live list is the seeded one (§5.3).
 
 ## 1. The brief (Yair, 30/09/2026)
 
@@ -81,5 +81,5 @@ A fifth tab, **ציוד**, with two views:
   - left out on purpose: **כבל מאריך / מפצל** (the park forbids extension cables and there is no electricity); specific foods (אבוקדו, טופו, בירה…) became food groups.
 
 #### 5.3 Go-live
-- [ ] Yair pastes the new `Code.gs` and deploys a new version (same URL). Until then the site uses the starter list, and suggestions wait in the outbox.
-- [ ] Live check: the `gear` action answers with the seeded list
+- [x] Yair pastes the new `Code.gs` and deploys a new version (same URL). Done 30/09/2026 (Yair: *"deployed"*)
+- [x] Live check: the `gear` action answers with the seeded list (30/09/2026: 117 items, ids 1-117 match `gear-seed.js`; read-only)

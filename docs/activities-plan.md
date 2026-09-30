@@ -2,7 +2,7 @@
 
 > **Open questions for Yair:** none yet. The decisions below were derived from the brief (30/09/2026). Say if any is wrong.
 
-**Status:** backend (§5.1) and site (§5.2) built 30/09/2026. **Waiting on Yair: §5.3**, paste the new `Code.gs`, deploy a new version, then add the demo activities from the sheet menu. Until then the live tab says "הפעילויות ייפתחו בקרוב" (the live script answers `bad_request`). The same paste also ships the equipment backend (gear-plan §5.3).
+**Status:** live 30/09/2026: the backend is deployed and the tab is open. **Waiting on Yair: §5.3**, add the demo activities from the sheet menu. Until then the live tab says "הפעילויות ייפתחו בקרוב" (the live script answers `bad_request`). The same paste also ships the equipment backend (gear-plan §5.3).
 
 ## 1. The brief (Yair, 30/09/2026)
 
@@ -89,6 +89,7 @@ The organizers' sheet gets an **פעילויות** tab (topic, time, owner, join
 - [x] Gate: all 8 suites green. Mutation-checked: showing empty days, keeping empty hours and not sending the host each turn the e2e red
 
 #### 5.3 Go-live
-- [ ] Yair pastes the new `Code.gs` and deploys a new version
+- [x] Yair pastes the new `Code.gs` and deploys a new version. Done 30/09/2026; the live `activities` action answers `ok` with an empty list
 - [ ] Yair opens the sheet: menu **מארגנים → הוספת 3 פעילויות לדוגמה** (the menu appears after a reload of the sheet)
-- [ ] Live check with a test family, then clean up
+- [x] ~~Live check with a test family, then clean up~~ — dropped 30/09/2026. A test registration and its join leave rows in the live sheet that only a hand edit removes (a cancel keeps its row by design). The write logic is covered by the vm tests on this same `Code.gs`, and running the demo menu exercises the live sheet store (tab creation, writing, reading back)
+- [ ] After the menu has run: read the live list back and confirm the 3 demos (a session, read-only)
