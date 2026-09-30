@@ -310,7 +310,22 @@ function onOpen() {
     .addItem('סנכרון עכשיו', 'syncNow')
     .addSeparator()
     .addItem('הפעלת התראות', 'enableAlerts')
+    .addSeparator()
+    .addItem('הוספת 3 פעילויות לדוגמה', 'addDemoActivities')
     .addToUi();
+}
+// Three example activities, one per audience, so families see what the tab is for. Safe to run twice
+// (fixed client ids). Hide one by setting its status to הוסתר in the פעילויות tab.
+function addDemoActivities() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  var n;
+  try {
+    n = addDemoActivities_(activitiesStore_());
+    CacheService.getScriptCache().remove(ACTS_CACHE);
+    try { syncOrganizers_(); } catch (x) { /* the organizers' copy must never block this */ }
+  } finally { lock.releaseLock(); }
+  SpreadsheetApp.getActiveSpreadsheet().toast(n ? 'נוספו ' + n + ' פעילויות לדוגמה.' : 'הפעילויות לדוגמה כבר קיימות.');
 }
 function connectOrganizers() {
   var ui = SpreadsheetApp.getUi();
@@ -725,6 +740,32 @@ function leave_(req, store, as) {
     }
   });
   return actDone_(as);
+}
+
+// Pure: the example activities (menu "הוספת 3 פעילויות לדוגמה"). Owned by "המארגנים", so no family edits them.
+var DEMO_OWNER = 'המארגנים';
+var DEMO_NOTE = '\n\nזו פעילות לדוגמה, כדי להראות איך זה נראה.';
+var DEMO_ACTS = [
+  { clientId: 'demo-activity-1', topic: 'ארוחת ערב משותפת ומנגל', start: '2026-10-07T18:30', end: '2026-10-07T21:00', tag: 'לכולם',
+    capacity: '', description: 'מדליקים מנגלים ליד השולחנות, וכל משפחה מביאה משהו לשולחן המשותף.',
+    required: 'צלחת, כוס וסכו"ם', suggested: 'סלט או קינוח לשולחן המשותף' },
+  { clientId: 'demo-activity-2', topic: 'יוגה בזריחה על החוף', start: '2026-10-08T06:00', end: '2026-10-08T07:00', tag: 'מבוגרים',
+    capacity: 12, description: 'תרגול רגוע לכל הרמות, מול הים.', required: 'מזרן יוגה או מגבת', suggested: 'בקבוק מים' },
+  { clientId: 'demo-activity-3', topic: 'חיפוש אוצרות בחוף', start: '2026-10-09T10:00', end: '2026-10-09T11:30', tag: 'ילדים',
+    ageFrom: 5, ageTo: 10, capacity: 15, description: 'משימות ורמזים לאורך החוף, ופרס קטן בסוף.',
+    required: 'כובע ובקבוק מים', suggested: 'דלי קטן' }
+];
+function addDemoActivities_(as) {
+  var n = 0;
+  DEMO_ACTS.forEach(function (d) {
+    if (as.acts().some(function (x) { return x.clientId === d.clientId; })) return;
+    var row = { id: nextId_(as.acts()), status: AST.active, owner: DEMO_OWNER, created: as.now(), updated: '', clientId: d.clientId,
+                topic: d.topic, description: d.description + DEMO_NOTE, start: d.start, end: d.end, tag: d.tag,
+                ageFrom: d.ageFrom == null ? '' : d.ageFrom, ageTo: d.ageTo == null ? '' : d.ageTo, capacity: d.capacity,
+                required: safeCell_(d.required), suggested: safeCell_(d.suggested) };
+    as.addAct(row); n++;
+  });
+  return n;
 }
 
 function actWhen_(a) {

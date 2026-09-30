@@ -437,5 +437,22 @@ console.log('gear tests passed');
   assert.strictEqual(B(30).error, 'busy');
   busy.actsRows[0].status = 'בוטל';
   assert.ok(B(31).ok);
+
+  // three example activities from the sheet menu: one per audience, public at once, safe to run twice
+  const demo = actStore();
+  assert.strictEqual(ctx.addDemoActivities_(demo), 3);
+  assert.strictEqual(ctx.addDemoActivities_(demo), 0);
+  const pubDemo = P(ctx.route({ action: 'activities' }, null, null, demo)).activities;
+  assert.deepStrictEqual(pubDemo.map(a => a.tag), ['לכולם', 'מבוגרים', 'ילדים']);
+  assert.ok(pubDemo.every(a => a.owner === 'המארגנים' && a.description.includes('לדוגמה')));
+  assert.strictEqual(pubDemo[2].ageFrom, 5); assert.strictEqual(pubDemo[0].capacity, 0);
+  // each one would also pass the site's own save (same checks as a family's activity)
+  for (const [i, a] of pubDemo.entries()) {
+    const r2 = P(ctx.route({ action: 'saveActivity', user: 'Levi', pin: '5555', clientId: 'demo-check-' + i, activity: a }, reg, null, actStore()));
+    assert.ok(r2.ok, a.topic + ': ' + r2.error);
+  }
+  // families join them; no family can edit them
+  assert.ok(P(ctx.route({ action: 'join', user: 'Levi', pin: '5555', id: 2, count: 2 }, reg, null, demo)).ok);
+  assert.strictEqual(P(ctx.route({ action: 'deleteActivity', user: 'Levi', pin: '5555', id: 2 }, reg, null, demo)).error, 'not_owner');
 }
 console.log('activities tests passed');

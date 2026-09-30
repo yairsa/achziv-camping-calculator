@@ -311,7 +311,22 @@ function onOpen() {
     .addItem('\u05e1\u05e0\u05db\u05e8\u05d5\u05df \u05e2\u05db\u05e9\u05d9\u05d5', 'syncNow')
     .addSeparator()
     .addItem('\u05d4\u05e4\u05e2\u05dc\u05ea \u05d4\u05ea\u05e8\u05d0\u05d5\u05ea', 'enableAlerts')
+    .addSeparator()
+    .addItem('\u05d4\u05d5\u05e1\u05e4\u05ea 3 \u05e4\u05e2\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea \u05dc\u05d3\u05d5\u05d2\u05de\u05d4', 'addDemoActivities')
     .addToUi();
+}
+// Three example activities, one per audience, so families see what the tab is for. Safe to run twice
+// (fixed client ids). Hide one by setting its status to \u05d4\u05d5\u05e1\u05ea\u05e8 in the \u05e4\u05e2\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea tab.
+function addDemoActivities() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  var n;
+  try {
+    n = addDemoActivities_(activitiesStore_());
+    CacheService.getScriptCache().remove(ACTS_CACHE);
+    try { syncOrganizers_(); } catch (x) { /* the organizers' copy must never block this */ }
+  } finally { lock.releaseLock(); }
+  SpreadsheetApp.getActiveSpreadsheet().toast(n ? '\u05e0\u05d5\u05e1\u05e4\u05d5 ' + n + ' \u05e4\u05e2\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea \u05dc\u05d3\u05d5\u05d2\u05de\u05d4.' : '\u05d4\u05e4\u05e2\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea \u05dc\u05d3\u05d5\u05d2\u05de\u05d4 \u05db\u05d1\u05e8 \u05e7\u05d9\u05d9\u05de\u05d5\u05ea.');
 }
 function connectOrganizers() {
   var ui = SpreadsheetApp.getUi();
@@ -959,6 +974,32 @@ function leave_(req, store, as) {
     }
   });
   return actDone_(as);
+}
+
+// Pure: the example activities (menu "\u05d4\u05d5\u05e1\u05e4\u05ea 3 \u05e4\u05e2\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea \u05dc\u05d3\u05d5\u05d2\u05de\u05d4"). Owned by "\u05d4\u05de\u05d0\u05e8\u05d2\u05e0\u05d9\u05dd", so no family edits them.
+var DEMO_OWNER = '\u05d4\u05de\u05d0\u05e8\u05d2\u05e0\u05d9\u05dd';
+var DEMO_NOTE = '\n\n\u05d6\u05d5 \u05e4\u05e2\u05d9\u05dc\u05d5\u05ea \u05dc\u05d3\u05d5\u05d2\u05de\u05d4, \u05db\u05d3\u05d9 \u05dc\u05d4\u05e8\u05d0\u05d5\u05ea \u05d0\u05d9\u05da \u05d6\u05d4 \u05e0\u05e8\u05d0\u05d4.';
+var DEMO_ACTS = [
+  { clientId: 'demo-activity-1', topic: '\u05d0\u05e8\u05d5\u05d7\u05ea \u05e2\u05e8\u05d1 \u05de\u05e9\u05d5\u05ea\u05e4\u05ea \u05d5\u05de\u05e0\u05d2\u05dc', start: '2026-10-07T18:30', end: '2026-10-07T21:00', tag: '\u05dc\u05db\u05d5\u05dc\u05dd',
+    capacity: '', description: '\u05de\u05d3\u05dc\u05d9\u05e7\u05d9\u05dd \u05de\u05e0\u05d2\u05dc\u05d9\u05dd \u05dc\u05d9\u05d3 \u05d4\u05e9\u05d5\u05dc\u05d7\u05e0\u05d5\u05ea, \u05d5\u05db\u05dc \u05de\u05e9\u05e4\u05d7\u05d4 \u05de\u05d1\u05d9\u05d0\u05d4 \u05de\u05e9\u05d4\u05d5 \u05dc\u05e9\u05d5\u05dc\u05d7\u05df \u05d4\u05de\u05e9\u05d5\u05ea\u05e3.',
+    required: '\u05e6\u05dc\u05d7\u05ea, \u05db\u05d5\u05e1 \u05d5\u05e1\u05db\u05d5"\u05dd', suggested: '\u05e1\u05dc\u05d8 \u05d0\u05d5 \u05e7\u05d9\u05e0\u05d5\u05d7 \u05dc\u05e9\u05d5\u05dc\u05d7\u05df \u05d4\u05de\u05e9\u05d5\u05ea\u05e3' },
+  { clientId: 'demo-activity-2', topic: '\u05d9\u05d5\u05d2\u05d4 \u05d1\u05d6\u05e8\u05d9\u05d7\u05d4 \u05e2\u05dc \u05d4\u05d7\u05d5\u05e3', start: '2026-10-08T06:00', end: '2026-10-08T07:00', tag: '\u05de\u05d1\u05d5\u05d2\u05e8\u05d9\u05dd',
+    capacity: 12, description: '\u05ea\u05e8\u05d2\u05d5\u05dc \u05e8\u05d2\u05d5\u05e2 \u05dc\u05db\u05dc \u05d4\u05e8\u05de\u05d5\u05ea, \u05de\u05d5\u05dc \u05d4\u05d9\u05dd.', required: '\u05de\u05d6\u05e8\u05df \u05d9\u05d5\u05d2\u05d4 \u05d0\u05d5 \u05de\u05d2\u05d1\u05ea', suggested: '\u05d1\u05e7\u05d1\u05d5\u05e7 \u05de\u05d9\u05dd' },
+  { clientId: 'demo-activity-3', topic: '\u05d7\u05d9\u05e4\u05d5\u05e9 \u05d0\u05d5\u05e6\u05e8\u05d5\u05ea \u05d1\u05d7\u05d5\u05e3', start: '2026-10-09T10:00', end: '2026-10-09T11:30', tag: '\u05d9\u05dc\u05d3\u05d9\u05dd',
+    ageFrom: 5, ageTo: 10, capacity: 15, description: '\u05de\u05e9\u05d9\u05de\u05d5\u05ea \u05d5\u05e8\u05de\u05d6\u05d9\u05dd \u05dc\u05d0\u05d5\u05e8\u05da \u05d4\u05d7\u05d5\u05e3, \u05d5\u05e4\u05e8\u05e1 \u05e7\u05d8\u05df \u05d1\u05e1\u05d5\u05e3.',
+    required: '\u05db\u05d5\u05d1\u05e2 \u05d5\u05d1\u05e7\u05d1\u05d5\u05e7 \u05de\u05d9\u05dd', suggested: '\u05d3\u05dc\u05d9 \u05e7\u05d8\u05df' }
+];
+function addDemoActivities_(as) {
+  var n = 0;
+  DEMO_ACTS.forEach(function (d) {
+    if (as.acts().some(function (x) { return x.clientId === d.clientId; })) return;
+    var row = { id: nextId_(as.acts()), status: AST.active, owner: DEMO_OWNER, created: as.now(), updated: '', clientId: d.clientId,
+                topic: d.topic, description: d.description + DEMO_NOTE, start: d.start, end: d.end, tag: d.tag,
+                ageFrom: d.ageFrom == null ? '' : d.ageFrom, ageTo: d.ageTo == null ? '' : d.ageTo, capacity: d.capacity,
+                required: safeCell_(d.required), suggested: safeCell_(d.suggested) };
+    as.addAct(row); n++;
+  });
+  return n;
 }
 
 function actWhen_(a) {

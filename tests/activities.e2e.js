@@ -44,6 +44,7 @@ let oldBackend = false, dropNext = 0, delay = 0, calls = [];
   const text = (sel) => page.locator(sel).innerText();
   const noHScroll = async (where) => assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'horizontal scroll: ' + where);
   const msg = () => text('#act-msg');
+  const bg = (sel) => page.locator(sel).first().evaluate(e => getComputedStyle(e).backgroundColor);
   const waitMsg = (re) => page.waitForFunction((s) => new RegExp(s).test(document.getElementById('act-msg').textContent), re.source, { timeout: 15000 });
   const setTime = async (key, d, h, m) => { await page.selectOption('#af-' + key + '-day', d); await page.selectOption('#af-' + key + '-h', h); await page.selectOption('#af-' + key + '-m', m); };
 
@@ -187,6 +188,7 @@ let oldBackend = false, dropNext = 0, delay = 0, calls = [];
   assert.strictEqual(await page.locator('.arow').count(), 1);
   assert.ok((await text('#acts-count')).startsWith('נמצאו 1 מתוך 2'));
   await page.fill('#acts-q', '');
+  assert.notStrictEqual(await bg('.arow[data-id="1"]'), await bg('.arow[data-id="2"]'), 'list rows share a colour');
   await noHScroll('list');
 
   // ---- calendar: 3 days at a time on a phone, blocks open the details ----
@@ -196,6 +198,9 @@ let oldBackend = false, dropNext = 0, delay = 0, calls = [];
   assert.strictEqual(await page.locator('.ablock').count(), 3);                // the night event is split over two days
   assert.strictEqual(await text('.calhours span:first-child'), '08:00', 'the tail of last night should not stretch the day to 00:00');
   assert.ok((await text('.calday:nth-child(3) .ablock[data-id="2"]')).startsWith('עד 01:00'), 'the tail is drawn at the top');
+  // each audience its own background: kids (id 1) and adults (id 2) differ, in the calendar and in the list
+  assert.notStrictEqual(await bg('.ablock[data-id="1"]'), await bg('.ablock[data-id="2"]'), 'audiences share a colour');
+  assert.ok(!/rgba\(0, 0, 0, 0\)|transparent/.test(await bg('.ablock[data-id="2"]')));
   assert.ok(await page.isDisabled('#acts-prev'));
   await page.click('#acts-next');
   assert.deepStrictEqual((await page.locator('.calhead span').allInnerTexts()).slice(1), ['ו׳ 09/10', 'ש׳ 10/10', 'א׳ 11/10']);

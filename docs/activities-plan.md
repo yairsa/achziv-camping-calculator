@@ -2,7 +2,7 @@
 
 > **Open questions for Yair:** none yet. The decisions below were derived from the brief (30/09/2026). Say if any is wrong.
 
-**Status:** backend (§5.1) and site (§5.2) built 30/09/2026. **Waiting on Yair: §5.3**, paste the new `Code.gs` and deploy a new version. Until then the live tab says "הפעילויות ייפתחו בקרוב" (the live script answers `bad_request`). The same paste also ships the equipment backend (gear-plan §5.3).
+**Status:** backend (§5.1) and site (§5.2) built 30/09/2026. **Waiting on Yair: §5.3**, paste the new `Code.gs`, deploy a new version, then add the demo activities from the sheet menu. Until then the live tab says "הפעילויות ייפתחו בקרוב" (the live script answers `bad_request`). The same paste also ships the equipment backend (gear-plan §5.3).
 
 ## 1. The brief (Yair, 30/09/2026)
 
@@ -76,6 +76,13 @@ The organizers' sheet gets an **פעילויות** tab (topic, time, owner, join
 - [x] Gate: headless browser run at 360px: add → join → full → leave → edit → delete; no horizontal scroll: `tests/activities.e2e.js`, plus the tab order in `tests/layout.e2e.js`
   - mutation-checked: the day overlap, keeping the accepted code, the phone paging and the registration prefill each turn it red
 
+#### 5.2b Additions (Yair, 30/09/2026: *"Create 3 demo events. Give event bg color by participants characteristic"*)
+- [x] Each audience has its own colour (לכולם green, מבוגרים blue, ילדים orange, with dark-mode variants) on calendar blocks, list rows, the tag text and the filter chips. The chips serve as the legend. A full activity has a dashed edge in the calendar
+- [x] Three demo activities, one per audience, owned by "המארגנים" (no family can edit them). They come from the sheet menu **מארגנים → הוספת 3 פעילויות לדוגמה**, which is safe to run twice. Hide one with status `הוסתר`
+  - a menu item, because the live script is not deployed yet and a write through the site needs a family's code. Tested in `tests/backend.test.js`: each demo passes the same checks as a family's own activity
+- [x] Gate: all 8 suites green
+
 #### 5.3 Go-live
 - [ ] Yair pastes the new `Code.gs` and deploys a new version
+- [ ] Yair opens the sheet: menu **מארגנים → הוספת 3 פעילויות לדוגמה** (the menu appears after a reload of the sheet)
 - [ ] Live check with a test family, then clean up

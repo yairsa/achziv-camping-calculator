@@ -13,6 +13,8 @@
   var CACHE_KEY = 'achziv-acts-cache';
   var TRIP = { from: '2026-10-06', to: '2026-10-13' };
   var TAGS = ['לכולם', 'מבוגרים', 'ילדים'];
+  var TAG_CLASS = { 'לכולם': 't-all', 'מבוגרים': 't-adult', 'ילדים': 't-kid' };   // colours in style.css
+  function tc(t) { return TAG_CLASS[t] ? ' ' + TAG_CLASS[t] : ''; }
   var WD = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
   var HOUR_PX = 48, PHONE_DAYS = 3;
   var ERR = {
@@ -104,7 +106,7 @@
   // ---------- list by day ----------
   function row(a, d) {
     var j = myJoin(a);
-    return '<li><button type="button" class="arow' + (isFull(a) ? ' full' : '') + '" data-id="' + a.id + '">' +
+    return '<li><button type="button" class="arow' + tc(a.tag) + (isFull(a) ? ' full' : '') + '" data-id="' + a.id + '">' +
       '<span class="atime">' + esc(timeOnDay(a, d)) + '</span>' +
       '<span class="atopic">' + esc(a.topic) + '</span>' +
       '<span class="ameta"><span class="atag">' + esc(tagText(a)) + '</span> · ' + esc(placesText(a)) +
@@ -173,7 +175,7 @@
       cols.map(function (segs) {
         return '<div class="calday" style="height:' + h + 'px;background-size:100% ' + HOUR_PX + 'px">' + segs.map(function (g) {
           var w = 100 / g.lanes;
-          return '<button type="button" class="ablock' + (isFull(g.a) ? ' full' : '') + (myJoin(g.a) || isMine(g.a.owner) ? ' mine' : '') + '" data-id="' + g.a.id + '" ' +
+          return '<button type="button" class="ablock' + tc(g.a.tag) + (isFull(g.a) ? ' full' : '') + (myJoin(g.a) || isMine(g.a.owner) ? ' mine' : '') + '" data-id="' + g.a.id + '" ' +
             'style="top:' + ((g.s - from) / 60 * HOUR_PX) + 'px;height:' + ((g.e - g.s) / 60 * HOUR_PX - 2) + 'px;' +
             'inset-inline-start:' + (g.lane * w) + '%;width:calc(' + w + '% - 2px)">' +
             '<span class="btime">' + (g.cont ? 'עד ' + esc(hm(g.a.end)) : esc(hm(g.a.start))) + '</span>' + esc(g.a.topic) + '</button>';
@@ -187,7 +189,7 @@
       return '<button type="button" class="chip" aria-pressed="' + (d === day) + '" data-day="' + d + '">' + (d ? esc(dayLabel(d)) : 'כל הימים') + '</button>';
     }).join('');
     $('acts-tags').innerHTML = [''].concat(TAGS).map(function (t) {
-      return '<button type="button" class="chip" aria-pressed="' + (t === tag) + '" data-tag="' + esc(t) + '">' + (t ? esc(t) : 'כל הקהלים') + '</button>';
+      return '<button type="button" class="chip' + tc(t) + '" aria-pressed="' + (t === tag) + '" data-tag="' + esc(t) + '">' + (t ? esc(t) : 'כל הקהלים') + '</button>';
     }).join('');
   }
   function render() {
@@ -249,7 +251,7 @@
     $('act-dlg-body').innerHTML =
       '<h2 id="act-dlg-title">' + esc(a.topic) + '</h2>' +
       '<p class="awhen">' + esc(when(a)) + '</p>' +
-      '<p><span class="atag">' + esc(tagText(a)) + '</span> · מארגנים: ' + esc(a.owner) + '</p>' +
+      '<p><span class="atag' + tc(a.tag) + '">' + esc(tagText(a)) + '</span> · מארגנים: ' + esc(a.owner) + '</p>' +
       (a.description ? '<p class="adesc">' + esc(a.description) + '</p>' : '') +
       (a.required ? '<p><strong>חובה להביא:</strong> ' + esc(a.required) + '</p>' : '') +
       (a.suggested ? '<p><strong>מומלץ להביא:</strong> ' + esc(a.suggested) + '</p>' : '') +
