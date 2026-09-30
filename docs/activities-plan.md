@@ -129,7 +129,7 @@ The organizers' sheet gets an **פעילויות** tab (topic, time, owner, join
 
 #### 6.3 Gate and go-live
 - [x] All 9 gates green; push; live check — d08ee66; live 01/10: the 3 demo activities with their places text, הרשימה שלי shows the no-family message, no errors, no sideways scroll at 360px
-- [ ] Hand Yair `Code.gs` on the clipboard (deploy a new version)
+- [x] Hand Yair `Code.gs` on the clipboard (deploy a new version) — deployed by Yair 01/10/2026 (the same Code.gs as tour-plan §5.4, whose live check confirms the new version). A live join over the number was not run: it would leave a row in the live sheet; the vm tests cover it
 
 #### 6.4 A small confirmation after joining or leaving (Yair, 01/10/2026: *"when i register/remove myself from an activity, and close the modal, it should not re-open the full event modal for prompting success. it should open a small success modal: the activity name + confirm action"*)
 - [x] Join / update / leave close the details and open `#act-done`: a title (הצטרפתם! · מספר המשתתפים עודכן · יצאתם מהפעילות), the activity's name and time, the count; one אישור button, focused; the backdrop closes it too. Errors still show inside the details, where the form is

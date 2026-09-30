@@ -108,4 +108,4 @@
 
 #### 5.4 Gate and go-live
 - [x] All 9 gates green; push; live check (built-in text, since the old script is still deployed) — 78f3a9f; live 30/09: built-in text with bold, nothing cached (old script), no errors, no sideways scroll at 360px
-- [ ] Hand Yair `Code.gs` on the clipboard to paste and deploy a new version. Then a live check that the tab הדרכה appears and an edit shows on the site
+- [x] Hand Yair `Code.gs` on the clipboard to paste and deploy a new version. Then a live check that the tab הדרכה appears and an edit shows on the site — deployed by Yair 01/10/2026. Live: `tour` answers 21 steps in the site's order with `help` second; Yair has already edited 16 of them; the live page's bubble shows his sheet title after the background fetch, no errors
