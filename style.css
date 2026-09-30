@@ -41,7 +41,10 @@ a { color: var(--accent); }
 .skip:focus { inset-inline-start: 16px; top: 8px; background: var(--card); padding: 8px; z-index: 9; }
 
 /* tabs */
-.tabs { display: flex; gap: 4px; border-bottom: 2px solid var(--line); overflow-x: auto; }
+.tabs { display: flex; gap: 4px; border-bottom: 2px solid var(--line); overflow-x: auto;
+  position: sticky; top: 0; z-index: 5; background: var(--bg); }
+/* anything scrolled into view lands below the fixed tab row */
+.card, [id] { scroll-margin-top: 60px; }
 .tabs button {
   font: inherit; font-weight: 600; background: none; border: 0; color: var(--muted);
   padding: 10px 14px; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; white-space: nowrap;

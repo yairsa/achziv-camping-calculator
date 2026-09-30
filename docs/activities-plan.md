@@ -57,6 +57,7 @@ The organizers' sheet gets an **פעילויות** tab (topic, time, owner, join
 
 #### 5.2 Site
 - [ ] Tab **פעילויות**: list-by-day view + filters (day, tag, text)
+  - position: right after **ציוד** in the tab row (Yair, 30/09/2026: *"Events tab will be after ציוד"*)
 - [ ] Calendar view (desktop all days; phone 3 days with arrows)
 - [ ] Details panel: join / leave / edit / delete
 - [ ] Add / edit form: topic, description, start/end (end defaults to the start day), tag + ages, capacity, equipment ×2
