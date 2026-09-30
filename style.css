@@ -44,7 +44,12 @@ a { color: var(--accent); }
 .tabs { display: flex; gap: 4px; border-bottom: 2px solid var(--line); overflow-x: auto;
   position: sticky; top: 0; z-index: 5; background: var(--bg); }
 /* anything scrolled into view lands below the fixed tab row */
-.card, [id] { scroll-margin-top: 60px; }
+.card, [id] { scroll-margin-top: calc(var(--tabs-h, 48px) + 12px); }
+#panel-calc .card, #panel-calc [id] { scroll-margin-top: calc(var(--tabs-h, 48px) + 68px); }
+/* the calculator's fixed bar (מחירון / ✕), right under the tab row */
+.subbar { position: sticky; top: var(--tabs-h, 48px); z-index: 4; background: var(--bg); padding: 8px 0; margin-bottom: 8px; }
+.subbar .btn-secondary { width: auto; border-style: solid; background: var(--card); }
+#calc-main[hidden], #calc-prices[hidden] { display: none; }
 .tabs button {
   font: inherit; font-weight: 600; background: none; border: 0; color: var(--muted);
   padding: 10px 14px; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; white-space: nowrap;

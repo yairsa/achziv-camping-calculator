@@ -359,8 +359,46 @@
       else if (d) { selectTab(tabs[(i + d + tabs.length) % tabs.length], true); e.preventDefault(); }
     });
   });
+  // The tab row is fixed on top; the calculator's own fixed bar sits right under it.
+  function tabsHeight() {
+    document.documentElement.style.setProperty('--tabs-h', document.querySelector('.tabs').offsetHeight + 'px');
+  }
+  tabsHeight();
+  window.addEventListener('resize', tabsHeight);
+
+  // ---------- price list: a section inside the calculator ----------
+  // Opening it adds a history step, so the phone's back button closes it like the ✕ does.
+  var calcScroll = 0;
+  function showPrices(on) {
+    var main = document.getElementById('calc-main');
+    if (on === !main.hidden) {
+      if (on) calcScroll = window.scrollY;
+      main.hidden = on;
+      document.getElementById('calc-prices').hidden = !on;
+      document.getElementById('open-prices').setAttribute('aria-expanded', on);
+      var y = on ? 0 : calcScroll;
+      window.scrollTo(0, y);
+      requestAnimationFrame(function () { window.scrollTo(0, y); });   // after the browser's own back-button restore
+    }
+    document.getElementById(on ? 'close-prices' : 'open-prices').focus({ preventScroll: true });
+  }
+  document.getElementById('open-prices').addEventListener('click', function () {
+    // push first: the browser stores the calculator's scroll position with the entry being left
+    try { history.pushState({ prices: 1 }, '', '#prices'); } catch (e) { /* ignore */ }
+    showPrices(true);
+  });
+  document.getElementById('close-prices').addEventListener('click', function () {
+    if (history.state && history.state.prices) { history.back(); return; }     // popstate closes it
+    showPrices(false);
+    try { history.replaceState(null, '', '#calc'); } catch (e) { /* ignore */ }
+  });
+  window.addEventListener('popstate', function () {
+    if (!document.getElementById('panel-calc').hidden) showPrices(!!(history.state && history.state.prices));
+  });
+
   var fromHash = document.getElementById('tab-' + location.hash.slice(1));
   if (fromHash) selectTab(fromHash);
+  else if (location.hash === '#prices') { showPrices(true); document.activeElement.blur(); }   // an old link to the price tab
 
   // ---------- registration (Google Sheet backend) ----------
   var ERR = {

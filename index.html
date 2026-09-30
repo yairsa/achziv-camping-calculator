@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=8e330fe8">
+  <link rel="stylesheet" href="style.css?v=118d2769">
 </head>
 <body>
   <a class="skip" href="#main">דלג לתוכן</a>
@@ -20,7 +20,6 @@
 
   <nav class="tabs" role="tablist" aria-label="חלקי האתר">
     <button role="tab" id="tab-calc"   aria-controls="panel-calc"   aria-selected="true">מחשבון</button>
-    <button role="tab" id="tab-prices" aria-controls="panel-prices" aria-selected="false" tabindex="-1">מחירון</button>
     <button role="tab" id="tab-place"  aria-controls="panel-place"  aria-selected="false" tabindex="-1">על המקום</button>
     <button role="tab" id="tab-gear"   aria-controls="panel-gear"   aria-selected="false" tabindex="-1">ציוד</button>
     <button role="tab" id="tab-tips"   aria-controls="panel-tips"   aria-selected="false" tabindex="-1">טיפים</button>
@@ -30,6 +29,26 @@
 
     <!-- ===== Calculator ===== -->
     <section role="tabpanel" id="panel-calc" aria-labelledby="tab-calc">
+      <!-- the price list: a section of the calculator, opened by the button, closed by ✕ or the phone's back -->
+      <div id="calc-prices" hidden>
+        <div class="subbar"><button type="button" id="close-prices" class="btn-secondary">✕ חזרה למחשבון</button></div>
+        <div class="card">
+          <h2>מחירון לינת שטח באוהלים פרטיים</h2>
+          <p class="hint">מחיר לאדם ללילה. אותו מחיר באמצע שבוע ובסופי שבוע. מחיר הלינה כולל ביקור בגן הלאומי.</p>
+          <div class="table-wrap"><table id="price-table"></table></div>
+          <ul class="notes">
+            <li><strong>הנחה קבוצתית</strong> — לקבוצה שמגיעה יחד ומונה 30 לנים לפחות. חלה רק על משלמי מחיר רגיל (מבוגרים וילדים בלי הנחה אחרת). אין כפל הנחות.</li>
+            <li>ילד = מגיל 5 עד 14. מתחת לגיל 5 אין תשלום במחירון.</li>
+            <li>זכאים להנחה או לפטור (לינת שטח בלבד, בהצגת תעודה): נכה צה"ל ומלווה, נכה שחוק נכי המלחמה בנאצים חל עליו ומלווה, מלווה לאדם עם מוגבלות, תורם איבר בפועל, מדריך תיירים, אזרח ותיק, סטודנט, חיילי חובה ושירות לאומי, משרתי מילואים פעילים.</li>
+            <li>התשלום נגבה בקופת האתר בהגעה (אשראי או מזומן) לפי מספר הלנים והלילות שבהזמנה. ההזמנה תופסת מסגרת אשראי; לא ניתן להזמין בכרטיס דיירקט/דביט/נטען.</li>
+            <li>אי-הגעה בלי ביטול מחויבת לפי נוהל הביטול של רשות הטבע והגנים.</li>
+          </ul>
+          <p class="source">מקור: <a id="source-link" target="_blank" rel="noopener">אתר רשות הטבע והגנים</a> · נבדק <span id="checked-date"></span>. המחיר הקובע הוא המחיר בקופה.</p>
+        </div>
+      </div>
+
+      <div id="calc-main">
+      <div class="subbar"><button type="button" id="open-prices" class="btn-secondary" aria-controls="calc-prices" aria-expanded="false">מחירון</button></div>
 
       <div class="card">
         <h2>1. מי מגיע?</h2>
@@ -115,22 +134,6 @@
       </div>
 
       <p class="center"><button type="button" id="reset" class="btn-link">איפוס המחשבון</button></p>
-    </section>
-
-    <!-- ===== Price list ===== -->
-    <section role="tabpanel" id="panel-prices" aria-labelledby="tab-prices" hidden>
-      <div class="card">
-        <h2>מחירון לינת שטח באוהלים פרטיים</h2>
-        <p class="hint">מחיר לאדם ללילה. אותו מחיר באמצע שבוע ובסופי שבוע. מחיר הלינה כולל ביקור בגן הלאומי.</p>
-        <div class="table-wrap"><table id="price-table"></table></div>
-        <ul class="notes">
-          <li><strong>הנחה קבוצתית</strong> — לקבוצה שמגיעה יחד ומונה 30 לנים לפחות. חלה רק על משלמי מחיר רגיל (מבוגרים וילדים בלי הנחה אחרת). אין כפל הנחות.</li>
-          <li>ילד = מגיל 5 עד 14. מתחת לגיל 5 אין תשלום במחירון.</li>
-          <li>זכאים להנחה או לפטור (לינת שטח בלבד, בהצגת תעודה): נכה צה"ל ומלווה, נכה שחוק נכי המלחמה בנאצים חל עליו ומלווה, מלווה לאדם עם מוגבלות, תורם איבר בפועל, מדריך תיירים, אזרח ותיק, סטודנט, חיילי חובה ושירות לאומי, משרתי מילואים פעילים.</li>
-          <li>התשלום נגבה בקופת האתר בהגעה (אשראי או מזומן) לפי מספר הלנים והלילות שבהזמנה. ההזמנה תופסת מסגרת אשראי; לא ניתן להזמין בכרטיס דיירקט/דביט/נטען.</li>
-          <li>אי-הגעה בלי ביטול מחויבת לפי נוהל הביטול של רשות הטבע והגנים.</li>
-        </ul>
-        <p class="source">מקור: <a id="source-link" target="_blank" rel="noopener">אתר רשות הטבע והגנים</a> · נבדק <span id="checked-date"></span>. המחיר הקובע הוא המחיר בקופה.</p>
       </div>
     </section>
 
@@ -323,7 +326,7 @@
   </footer>
 
   <script src="prices.js?v=9ef8ec21"></script>
-  <script src="app.js?v=709c1e69"></script>
+  <script src="app.js?v=41aa2044"></script>
   <script src="search.js?v=31352673"></script>
   <script src="tips.js?v=34713f3a"></script>
   <script src="gear-seed.js?v=97bfecc7"></script>
