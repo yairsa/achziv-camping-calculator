@@ -93,3 +93,38 @@ The organizers' sheet gets an **פעילויות** tab (topic, time, owner, join
 - [x] Yair opens the sheet: menu **מארגנים → הוספת 3 פעילויות לדוגמה** (the menu appears after a reload of the sheet)
 - [x] ~~Live check with a test family, then clean up~~ — dropped 30/09/2026. A test registration and its join leave rows in the live sheet that only a hand edit removes (a cancel keeps its row by design). The write logic is covered by the vm tests on this same `Code.gs`, and running the demo menu exercises the live sheet store (tab creation, writing, reading back)
 - [x] After the menu has run: read the live list back and confirm the 3 demos (a session, read-only). 30/09/2026: 3 activities (ids 1 to 3), times kept as text, owner המארגנים, capacity and ages right. The live page at 360px shows them in the list and in a 3-day calendar, with no horizontal scroll and no page errors
+
+## 6. Places are advisory · הרשימה שלי (Yair, 01/10/2026)
+
+> *"event - מספר מקומות: we don't actually manage registration or participation. this is advisory only, so don't limit registration. registration may exceed the number of 'sits'."*
+> *"lets add הרשימה שלי split, like in ציוד, to display events visitor's registered since they would like to attend. each participant sees their own list of relevant events."*
+
+**Supersedes the 30/09/2026 capacity decision in §2** ("A full activity takes no more joins"), and the `full` / `below_joined` bullets in §5.1: a join is never refused, and an edit may set fewer places than have joined.
+
+### Decisions (derived: object if wrong)
+
+| topic | decision | why |
+|---|---|---|
+| **מספר מקומות** | Kept, as information only. Under the number: "נשארו 3 מקומות (7 מתוך 10)" as today. At or over it: "7 מתוך 5 מקומות, אפשר עדיין להצטרף". Nothing is greyed out as full. The form says it does not limit | Advisory, as asked; the number still helps a host plan |
+| **Old backend** | Until Yair deploys the new Code.gs, the live script still answers `full`. The site shows that message, reworded, instead of a raw error | The site can go live first |
+| **Whose list** | The family this device knows: the name signed in this visit, or the name this device last registered with (the same `myName()` the "הצטרפתם" badge uses). Nothing new is stored | "Each participant sees their own list" without a new login |
+| **What is in it** | The activities the family joined, and the ones it organizes, by day, marked "הצטרפתם (n)" / "שלכם" | Both are ones they plan to attend |
+| **The toggle** | A third button in the view toggle: לפי ימים · לוח שבועי · הרשימה שלי (n). "רשימה לפי ימים" shortens to "לפי ימים" so three fit at 360px. In הרשימה שלי the search and chips are hidden, as in ציוד | Like ציוד, as asked |
+| **Empty** | No family known: "כדי לראות כאן את הפעילויות שלכם, היכנסו עם שם המשפחה והקוד (בלשונית מחשבון לינה)". Known, nothing joined: "עוד לא הצטרפתם לפעילות. פתחו פעילות ולחצו הצטרפות." | Says what to do |
+| **Tour** | The פעילויות tour's first bubble mentions הרשימה שלי. The old text goes into `TOUR_RETIRED_`, so the sheet's untouched cell follows | The tab follows the site (tour-plan §5) |
+
+### Tasks
+
+#### 6.1 Places advisory
+- [ ] Backend: `join_` never answers `full`; `saveActivity` never answers `below_joined`; tests updated (a join over the number succeeds; an edit below who joined succeeds); `python backend/build.py`
+- [ ] Site: `placesText` at/over the number; no `.full` dimming; no "הפעילות מלאה" block; the count input's max no longer tied to free places; no `below_joined` check in the form; the form label says it does not limit; `full` message reworded for the old backend
+- [ ] `activities.e2e.js`: joining a full activity works and shows the over text
+
+#### 6.2 הרשימה שלי
+- [ ] Toggle button + view: joined and own activities by day; count in the label; filters hidden; the two empty states
+- [ ] Tour text for the פעילויות toggle; old text retired
+- [ ] `activities.e2e.js`: the list holds exactly the joined/own ones, the count, both empty states, 360px no sideways scroll
+
+#### 6.3 Gate and go-live
+- [ ] All 9 gates green; push; live check
+- [ ] Hand Yair `Code.gs` on the clipboard (deploy a new version)
