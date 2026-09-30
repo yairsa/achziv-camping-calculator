@@ -374,7 +374,8 @@ p.awho { border: 0; padding: 0; }
 @media (max-width: 520px) {
   body { font-size: 16px; }
   h1 { font-size: 1.4rem; }
-  .tabs button { padding: 10px 6px; }
+  .tabs { gap: 2px; }
+  .tabs button { padding: 10px 5px; font-size: 15px; }   /* the five tabs, "מחשבון לינה" first, fit at 360px */
   .facilities { columns: 1; }
   .facts { grid-template-columns: 1fr; }
   .facts dd { margin-bottom: 6px; }
