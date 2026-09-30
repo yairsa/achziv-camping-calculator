@@ -230,7 +230,7 @@ console.log('search tests passed');
   assert.strictEqual(d1.subject, 'אכזיב: 2 ממתינים לאישור');
   assert.ok(d1.body.includes('5. [סלולרי ומחשבים] מטען נייד'), d1.body);
   assert.ok(d1.body.includes('על טיפ 1 (פנס ראש): תודה!') && d1.body.includes('https://sheet'), d1.body);
-  assert.deepStrictEqual(d1.seen, { tip: 5, comment: 3 });
+  assert.deepStrictEqual(d1.seen, { tip: 5, comment: 3, gear: 0 });
   assert.strictEqual(ctx.pendingDigest_(ts, d1.seen, ''), null);                    // same items: no second email
   T({ action: 'submitComment', clientId: 'cmt-00004', tipId: 1, text: 'עוד אחת' });
   assert.strictEqual(ctx.pendingDigest_(ts, d1.seen, '').subject, 'אכזיב: 3 ממתינים לאישור');  // new: lists all 3
@@ -246,3 +246,79 @@ console.log('search tests passed');
   assert.ok(ctx.route(tip({ clientId: 'client-cap02' }), null, full).ok);
 }
 console.log('tips tests passed');
+
+// ---------- equipment list ----------
+{
+  function gearStore(withSeed) {
+    const tips = [], comments = [], gear = withSeed ? P(ctx.gearSeedRows_()).map(r => ({
+      id: r[0], status: r[1], section: r[2], name: r[3], tags: r[4], note: r[5], submitted: r[6], approved: r[7], clientId: r[8] })) : [];
+    return {
+      gearRows: gear, tipsRows: tips,
+      tips: () => tips, comments: () => comments, gear: () => gear,
+      addTip: (r) => tips.push(r), addComment: (r) => comments.push(r), addGear: (r) => gear.push(r),
+      updateTip: () => {}, updateComment: () => {}, updateGear: () => {},
+      now: () => '30/09/2026 12:00'
+    };
+  }
+  // seed: item N is row id N, all approved, none re-stamped
+  const seed = P(ctx.gearSeedRows_());
+  assert.strictEqual(seed.length, ctx.GEAR_SEED_.length);
+  assert.ok(seed.every((r, i) => r[0] === i + 1 && r.length === ctx.GEAR_HEAD.length));
+  assert.ok(seed.every(r => ctx.GEAR_SECTIONS_.includes(r[2])), 'every seed item has a known section');
+  const gs = gearStore(true), G = (req) => P(ctx.route(req, null, gs));
+  assert.strictEqual(ctx.housekeep_(gs).stamped, 0);
+
+  // public list: sections, items with tags split, no internals
+  let pub = G({ action: 'gear' });
+  assert.ok(pub.ok); assert.deepStrictEqual(pub.sections, P(ctx.GEAR_SECTIONS_));
+  assert.strictEqual(pub.items.length, seed.length);
+  assert.deepStrictEqual(pub.items[0], { id: 1, section: 'אוהלים ולינה', name: 'אוהל', tags: ['בסיסי'], note: '' });
+  assert.deepStrictEqual(pub.items.find(i => i.name === 'משחקי קופסה וקלפים').tags, ['ילדים', 'נוחות']);
+  assert.ok(!JSON.stringify(pub).includes('seed-'));
+
+  // suggestion: pending, not public; retry does not duplicate
+  const sug = (extra) => Object.assign({ action: 'submitGear', clientId: 'gear-client-1', section: 'ים וחוף', name: 'כיסא חוף' }, extra);
+  let r = G(sug());
+  assert.deepStrictEqual([r.ok, r.id], [true, seed.length + 1]);
+  assert.strictEqual(gs.gearRows.at(-1).status, 'ממתין');
+  assert.strictEqual(G(sug({ name: 'שונה' })).id, seed.length + 1);
+  assert.strictEqual(gs.gearRows.length, seed.length + 1);
+  assert.strictEqual(G({ action: 'gear' }).items.length, seed.length);
+  // validation, bot trap, formula guard
+  assert.strictEqual(G(sug({ clientId: 'gear-client-2', section: 'לא קיים' })).error, 'bad_category');
+  assert.strictEqual(G(sug({ clientId: 'gear-client-2', name: 'א' })).error, 'too_short');
+  assert.strictEqual(G(sug({ clientId: 'gear-client-2', name: 'א'.repeat(61) })).error, 'too_long');
+  assert.strictEqual(G(sug({ clientId: 'x' })).error, 'bad_request');
+  assert.ok(G(sug({ clientId: 'gear-client-3', hp: 'x' })).ok); assert.strictEqual(gs.gearRows.length, seed.length + 1);
+  G(sug({ clientId: 'gear-client-4', name: '=cmd()' }));
+  assert.strictEqual(gs.gearRows.at(-1).name, "'=cmd()");
+
+  // digest lists suggested items; seen.gear stops a repeat email
+  const d = P(ctx.pendingDigest_(gs, {}, 'https://sheet'));
+  assert.strictEqual(d.subject, 'אכזיב: 2 ממתינים לאישור');
+  assert.ok(d.body.includes('פריטי ציוד שהוצעו (2):') && d.body.includes((seed.length + 1) + '. [ים וחוף] כיסא חוף'), d.body);
+  assert.ok(d.body.includes('=cmd()') && !d.body.includes("'=cmd"));
+  assert.strictEqual(d.seen.gear, seed.length + 2);
+  assert.strictEqual(ctx.pendingDigest_(gs, d.seen, ''), null);
+
+  // approve -> public for everyone, stamped; hidden -> off the list; Yair may move it to another section
+  const row = gs.gearRows.find(g => g.clientId === 'gear-client-1');
+  row.status = 'מאושר'; row.section = 'ציוד כללי';
+  assert.strictEqual(ctx.housekeep_(gs).stamped, 1);
+  pub = G({ action: 'gear' });
+  assert.deepStrictEqual(pub.items.at(-1), { id: seed.length + 1, section: 'ציוד כללי', name: 'כיסא חוף', tags: [], note: '' });
+  gs.gearRows[0].status = 'הוסתר';
+  assert.ok(!G({ action: 'gear' }).items.some(i => i.id === 1));
+  // a section typed by hand in the sheet still shows, after the known ones
+  gs.gearRows[1].section = 'חדש';
+  assert.deepStrictEqual(G({ action: 'gear' }).sections.slice(-1), ['חדש']);
+
+  // the pending cap is shared with the tips
+  const full = gearStore(false);
+  for (let i = 1; i <= 200; i++) full.tipsRows.push({ id: i, status: 'ממתין', clientId: 'x' + i });
+  assert.strictEqual(ctx.route(sug({ clientId: 'gear-cap-01' }), null, full).error, 'busy');
+  full.tipsRows[0].status = 'נדחה';
+  assert.ok(ctx.route(sug({ clientId: 'gear-cap-02' }), null, full).ok);
+  assert.strictEqual(ctx.route({ action: 'submitTip', clientId: 'tip-cap-003', category: 'ציוד', title: 'כותרת', text: 'טקסט ארוך' }, null, full).error, 'busy');
+}
+console.log('gear tests passed');

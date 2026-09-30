@@ -14,6 +14,8 @@
 //   tips    {}                                                         -> approved tips + approved comments (cached)
 //   submitTip     {clientId, category, title, text, author, hp}        -> a pending tip (safe to repeat)
 //   submitComment {clientId, tipId, text, author, hp}                  -> a pending comment (safe to repeat)
+//   gear    {}                                                         -> the approved equipment list (cached)
+//   submitGear    {clientId, section, name, hp}                        -> a suggested item, pending (safe to repeat)
 
 var SHEET_NAME = '\u05d4\u05e8\u05e9\u05de\u05d5\u05ea';
 var HEAD = ['\u05e9\u05dd \u05de\u05e9\u05ea\u05de\u05e9', '\u05e9\u05dd \u05dc\u05d4\u05e6\u05d2\u05d4', '\u05e2\u05d5\u05d3\u05db\u05df', '\u05dc\u05e0\u05d9\u05dd (\u05de\u05e7\u05e1\u05d9\u05de\u05d5\u05dd)', '\u05dc\u05e0\u05d9\u05dd \u05dc\u05e4\u05d9 \u05dc\u05d9\u05dc\u05d4', '\u05de\u05d7\u05d9\u05e8 \u05de\u05dc\u05d0', '\u05de\u05d7\u05d9\u05e8 \u05e7\u05d1\u05d5\u05e6\u05ea\u05d9',
@@ -28,19 +30,20 @@ function doGet() { return json_(route({ action: 'summary' }, sheetStore_())); }
 function doPost(e) {
   var req;
   try { req = JSON.parse(e.postData.contents); } catch (x) { return json_({ ok: false, error: 'bad_request' }); }
-  if (req && req.action === 'tips') {                 // public read: served from cache, no lock on a hit
-    var hit = CacheService.getScriptCache().get(TIPS_CACHE);
+  var cacheKey = req && { tips: TIPS_CACHE, gear: GEAR_CACHE }[req.action];
+  if (cacheKey) {                                     // public read: served from cache, no lock on a hit
+    var hit = CacheService.getScriptCache().get(cacheKey);
     if (hit) return ContentService.createTextOutput(hit).setMimeType(ContentService.MimeType.JSON);
   }
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    if (req && req.action === 'tips') {
+    if (cacheKey) {
       var out = JSON.stringify(route(req, null, tipsStore_()));
-      try { CacheService.getScriptCache().put(TIPS_CACHE, out, 300); } catch (x) { /* too big to cache: still served */ }
+      try { CacheService.getScriptCache().put(cacheKey, out, 300); } catch (x) { /* too big to cache: still served */ }
       return ContentService.createTextOutput(out).setMimeType(ContentService.MimeType.JSON);
     }
-    var tipAction = req && (req.action === 'submitTip' || req.action === 'submitComment');
+    var tipAction = req && (req.action === 'submitTip' || req.action === 'submitComment' || req.action === 'submitGear');
     var res = route(req, tipAction ? null : sheetStore_(), tipAction ? tipsStore_() : null);
     if (res.ok && (req.action === 'save' || req.action === 'delete')) {
       try { syncOrganizers_(); } catch (x) { /* the organizers' copy must never break a registration */ }
@@ -63,6 +66,8 @@ function route(req, store, tstore) {
       case 'tips': return tipsPublic_(tstore);
       case 'submitTip': return submitTip_(req, tstore);
       case 'submitComment': return submitComment_(req, tstore);
+      case 'gear': return gearPublic_(tstore);
+      case 'submitGear': return submitGear_(req, tstore);
       default: return { ok: false, error: 'bad_request' };
     }
   } catch (x) {
@@ -428,8 +433,8 @@ function checkClientId_(id) { if (!/^[A-Za-z0-9_-]{8,40}$/.test(String(id || '')
 function nextId_(rows) { return rows.reduce(function (m, r) { return Math.max(m, +r.id || 0); }, 0) + 1; }
 function tipNumber_(v) { var m = /\d+/.exec(String(v == null ? '' : v)); return m ? +m[0] : 0; }
 function pendingCount_(ts) {
-  return ts.tips().filter(function (t) { return t.status === ST.pending; }).length +
-         ts.comments().filter(function (c) { return c.status === ST.pending; }).length;
+  function n(rows) { return rows.filter(function (r) { return r.status === ST.pending; }).length; }
+  return n(ts.tips()) + n(ts.comments()) + n(gearRows_(ts));
 }
 
 // Public: approved tips, newest first, each with its approved comments (oldest first).
@@ -485,6 +490,184 @@ function submitComment_(req, ts) {
   return { ok: true, id: c.id };
 }
 
+// ---------- equipment list (docs/gear-plan.md) ----------
+// Tab \u05e6\u05d9\u05d5\u05d3: the general list. Created with the starter list from gear-seed.js (item N = row id N, so a
+// visitor's ticks made against the site's copy of the list still mean the same items).
+// A visitor's own item arrives as a pending row; \u05de\u05d0\u05d5\u05e9\u05e8 adds it to everyone's list, \u05d4\u05d5\u05e1\u05ea\u05e8 takes any item off.
+// Equipment list: sections and the starter list - shared by the site and the backend (docs/gear-plan.md).
+// The site loads it with a <script> tag, so the list works at once, even before the server answers.
+// backend/build.py inlines it into Code.gs at `//@include gear-seed.js`, and the script writes these rows
+// into the sheet's \u05e6\u05d9\u05d5\u05d3 tab the first time it creates the tab. Item N here is row id N there, so the
+// site's ticks mean the same thing before and after the sheet takes over.
+// After that the sheet is the source: edit items there, not here (this file only seeds a new tab).
+//
+// Row: [section, item, tags (comma separated), note]. Tags: \u05d1\u05e1\u05d9\u05e1\u05d9 \u00b7 \u05d9\u05dc\u05d3\u05d9\u05dd \u00b7 \u05ea\u05d9\u05e0\u05d5\u05e7\u05d5\u05ea \u00b7 \u05e0\u05d5\u05d7\u05d5\u05ea.
+// House rules this respects: no ropes between trees (no hammock), no music (no speaker), gas up to 10 kg,
+// no glass, no electricity or generators.
+
+var GEAR_SECTIONS_ = ['\u05d0\u05d5\u05d4\u05dc\u05d9\u05dd \u05d5\u05dc\u05d9\u05e0\u05d4', '\u05d1\u05d9\u05d2\u05d5\u05d3', '\u05d0\u05d5\u05db\u05dc \u05d5\u05d1\u05d9\u05e9\u05d5\u05dc', '\u05d9\u05dd \u05d5\u05d7\u05d5\u05e3', '\u05de\u05e7\u05dc\u05d7\u05d5\u05ea \u05d5\u05e9\u05d9\u05e8\u05d5\u05ea\u05d9\u05dd', '\u05d9\u05dc\u05d3\u05d9\u05dd', '\u05d1\u05d8\u05d9\u05d7\u05d5\u05ea',
+                      '\u05d7\u05e9\u05de\u05dc \u05d5\u05ea\u05d0\u05d5\u05e8\u05d4', '\u05e1\u05dc\u05d5\u05dc\u05e8\u05d9 \u05d5\u05de\u05d7\u05e9\u05d1\u05d9\u05dd', '\u05e6\u05d9\u05d5\u05d3 \u05db\u05dc\u05dc\u05d9', '\u05e9\u05d5\u05e0\u05d5\u05ea'];
+
+var GEAR_SEED_ = [
+  ['\u05d0\u05d5\u05d4\u05dc\u05d9\u05dd \u05d5\u05dc\u05d9\u05e0\u05d4', '\u05d0\u05d5\u05d4\u05dc', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05d0\u05d5\u05d4\u05dc\u05d9\u05dd \u05d5\u05dc\u05d9\u05e0\u05d4', '\u05d9\u05ea\u05d3\u05d5\u05ea \u05d0\u05e8\u05d5\u05db\u05d5\u05ea \u05dc\u05d7\u05d5\u05dc', '\u05d1\u05e1\u05d9\u05e1\u05d9', '\u05d4\u05d9\u05ea\u05d3\u05d5\u05ea \u05d4\u05e8\u05d2\u05d9\u05dc\u05d5\u05ea \u05dc\u05d0 \u05de\u05d7\u05d6\u05d9\u05e7\u05d5\u05ea \u05d1\u05d7\u05d5\u05dc'],
+  ['\u05d0\u05d5\u05d4\u05dc\u05d9\u05dd \u05d5\u05dc\u05d9\u05e0\u05d4', '\u05e4\u05d8\u05d9\u05e9 \u05d0\u05d5 \u05e7\u05d5\u05e8\u05e0\u05e1 \u05dc\u05d9\u05ea\u05d3\u05d5\u05ea', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05d0\u05d5\u05d4\u05dc\u05d9\u05dd \u05d5\u05dc\u05d9\u05e0\u05d4', '\u05e9\u05e7 \u05e9\u05d9\u05e0\u05d4 \u05dc\u05db\u05dc \u05d0\u05d7\u05d3', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05d0\u05d5\u05d4\u05dc\u05d9\u05dd \u05d5\u05dc\u05d9\u05e0\u05d4', '\u05de\u05d6\u05e8\u05df \u05dc\u05db\u05dc \u05d0\u05d7\u05d3', '\u05d1\u05e1\u05d9\u05e1\u05d9', '\u05d0\u05e4\u05e9\u05e8 \u05d2\u05dd \u05dc\u05e9\u05db\u05d5\u05e8 \u05d1\u05d7\u05e0\u05d9\u05d5\u05df, 12 \u20aa \u05dc\u05dc\u05d9\u05dc\u05d4, \u05dc\u05e4\u05d9 \u05d4\u05de\u05dc\u05d0\u05d9'],
+  ['\u05d0\u05d5\u05d4\u05dc\u05d9\u05dd \u05d5\u05dc\u05d9\u05e0\u05d4', '\u05de\u05e9\u05d0\u05d1\u05d4 \u05dc\u05de\u05d6\u05e8\u05df \u05de\u05ea\u05e0\u05e4\u05d7', '', ''],
+  ['\u05d0\u05d5\u05d4\u05dc\u05d9\u05dd \u05d5\u05dc\u05d9\u05e0\u05d4', '\u05db\u05e8\u05d9\u05ea', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05d0\u05d5\u05d4\u05dc\u05d9\u05dd \u05d5\u05dc\u05d9\u05e0\u05d4', '\u05e9\u05de\u05d9\u05db\u05d4 \u05d3\u05e7\u05d4', '', '\u05d4\u05dc\u05d9\u05dc\u05d5\u05ea \u05d1\u05d0\u05d5\u05e7\u05d8\u05d5\u05d1\u05e8 \u05d9\u05db\u05d5\u05dc\u05d9\u05dd \u05dc\u05d4\u05d9\u05d5\u05ea \u05e7\u05e8\u05d9\u05e8\u05d9\u05dd'],
+  ['\u05d0\u05d5\u05d4\u05dc\u05d9\u05dd \u05d5\u05dc\u05d9\u05e0\u05d4', '\u05e1\u05d3\u05d9\u05df \u05dc\u05de\u05d6\u05e8\u05df', '\u05e0\u05d5\u05d7\u05d5\u05ea', ''],
+  ['\u05d0\u05d5\u05d4\u05dc\u05d9\u05dd \u05d5\u05dc\u05d9\u05e0\u05d4', '\u05d9\u05e8\u05d9\u05e2\u05ea \u05e7\u05e8\u05e7\u05e2 \u05de\u05ea\u05d7\u05ea \u05dc\u05d0\u05d5\u05d4\u05dc', '', ''],
+  ['\u05d0\u05d5\u05d4\u05dc\u05d9\u05dd \u05d5\u05dc\u05d9\u05e0\u05d4', '\u05d9\u05e8\u05d9\u05e2\u05ea \u05e6\u05dc \u05d0\u05d5 \u05d2\u05d6\u05d9\u05d1\u05d5', '\u05e0\u05d5\u05d7\u05d5\u05ea', ''],
+  ['\u05d0\u05d5\u05d4\u05dc\u05d9\u05dd \u05d5\u05dc\u05d9\u05e0\u05d4', '\u05db\u05d9\u05e1\u05d0\u05d5\u05ea \u05de\u05ea\u05e7\u05e4\u05dc\u05d9\u05dd', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05d0\u05d5\u05d4\u05dc\u05d9\u05dd \u05d5\u05dc\u05d9\u05e0\u05d4', '\u05e9\u05d5\u05dc\u05d7\u05df \u05de\u05ea\u05e7\u05e4\u05dc', '\u05e0\u05d5\u05d7\u05d5\u05ea', '\u05d9\u05e9 \u05d1\u05d7\u05e0\u05d9\u05d5\u05df 80 \u05e9\u05d5\u05dc\u05d7\u05e0\u05d5\u05ea \u05e4\u05d9\u05e7\u05e0\u05d9\u05e7'],
+  ['\u05d0\u05d5\u05d4\u05dc\u05d9\u05dd \u05d5\u05dc\u05d9\u05e0\u05d4', '\u05e9\u05d8\u05d9\u05d7\u05d5\u05df \u05dc\u05db\u05e0\u05d9\u05e1\u05d4 \u05dc\u05d0\u05d5\u05d4\u05dc', '\u05e0\u05d5\u05d7\u05d5\u05ea', '\u05e4\u05d7\u05d5\u05ea \u05d7\u05d5\u05dc \u05d1\u05ea\u05d5\u05da \u05d4\u05d0\u05d5\u05d4\u05dc'],
+  ['\u05d0\u05d5\u05d4\u05dc\u05d9\u05dd \u05d5\u05dc\u05d9\u05e0\u05d4', '\u05de\u05d8\u05d0\u05d8\u05d0 \u05e7\u05d8\u05df \u05d5\u05d9\u05e2\u05d4', '\u05e0\u05d5\u05d7\u05d5\u05ea', ''],
+
+  ['\u05d1\u05d9\u05d2\u05d5\u05d3', '\u05d1\u05d2\u05d3\u05d9\u05dd \u05dc\u05d4\u05d7\u05dc\u05e4\u05d4 \u05dc\u05db\u05dc \u05d9\u05d5\u05dd', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05d1\u05d9\u05d2\u05d5\u05d3', '\u05ea\u05d7\u05ea\u05d5\u05e0\u05d9\u05dd \u05d5\u05d2\u05e8\u05d1\u05d9\u05d9\u05dd', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05d1\u05d9\u05d2\u05d5\u05d3', '\u05e1\u05d5\u05d5\u05d8\u05e9\u05d9\u05e8\u05d8 \u05d0\u05d5 \u05de\u05e2\u05d9\u05dc \u05e7\u05dc \u05dc\u05e2\u05e8\u05d1', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05d1\u05d9\u05d2\u05d5\u05d3', '\u05de\u05db\u05e0\u05e1\u05d9\u05d9\u05dd \u05d0\u05e8\u05d5\u05db\u05d9\u05dd', '', ''],
+  ['\u05d1\u05d9\u05d2\u05d5\u05d3', '\u05e4\u05d9\u05d2\u05f3\u05de\u05d4', '', ''],
+  ['\u05d1\u05d9\u05d2\u05d5\u05d3', '\u05db\u05d5\u05d1\u05e2', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05d1\u05d9\u05d2\u05d5\u05d3', '\u05e1\u05e0\u05d3\u05dc\u05d9\u05dd \u05d0\u05d5 \u05db\u05e4\u05db\u05e4\u05d9\u05dd', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05d1\u05d9\u05d2\u05d5\u05d3', '\u05e0\u05e2\u05dc\u05d9\u05d9\u05dd \u05e1\u05d2\u05d5\u05e8\u05d5\u05ea', '', '\u05dc\u05d8\u05d9\u05d5\u05dc\u05d9\u05dd \u05d1\u05d0\u05d6\u05d5\u05e8'],
+  ['\u05d1\u05d9\u05d2\u05d5\u05d3', '\u05e9\u05e7\u05d9\u05ea \u05dc\u05db\u05d1\u05d9\u05e1\u05d4 \u05de\u05dc\u05d5\u05db\u05dc\u05db\u05ea', '', ''],
+
+  ['\u05d0\u05d5\u05db\u05dc \u05d5\u05d1\u05d9\u05e9\u05d5\u05dc', '\u05db\u05d9\u05e8\u05ea \u05d2\u05d6 \u05d5\u05d1\u05dc\u05d5\u05df', '\u05d1\u05e1\u05d9\u05e1\u05d9', '\u05d1\u05dc\u05d5\u05df \u05d2\u05d6 \u05e2\u05d3 10 \u05e7\u05f4\u05d2 \u05d1\u05dc\u05d1\u05d3'],
+  ['\u05d0\u05d5\u05db\u05dc \u05d5\u05d1\u05d9\u05e9\u05d5\u05dc', '\u05de\u05e6\u05d9\u05ea \u05d0\u05d5 \u05d2\u05e4\u05e8\u05d5\u05e8\u05d9\u05dd', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05d0\u05d5\u05db\u05dc \u05d5\u05d1\u05d9\u05e9\u05d5\u05dc', '\u05e1\u05d9\u05e8 \u05d5\u05de\u05d7\u05d1\u05ea', '', ''],
+  ['\u05d0\u05d5\u05db\u05dc \u05d5\u05d1\u05d9\u05e9\u05d5\u05dc', '\u05e4\u05d9\u05e0\u05d2\u05f3\u05d0\u05df \u05d0\u05d5 \u05e7\u05d5\u05de\u05e7\u05d5\u05dd \u05dc\u05e7\u05e4\u05d4', '', ''],
+  ['\u05d0\u05d5\u05db\u05dc \u05d5\u05d1\u05d9\u05e9\u05d5\u05dc', '\u05e6\u05dc\u05d7\u05d5\u05ea, \u05db\u05d5\u05e1\u05d5\u05ea \u05d5\u05e1\u05db\u05d5\u05f4\u05dd \u05e8\u05d1-\u05e4\u05e2\u05de\u05d9\u05d9\u05dd', '\u05d1\u05e1\u05d9\u05e1\u05d9', '\u05d1\u05dc\u05d9 \u05d6\u05db\u05d5\u05db\u05d9\u05ea - \u05d0\u05e1\u05d5\u05e8 \u05dc\u05d4\u05db\u05e0\u05d9\u05e1 \u05d6\u05db\u05d5\u05db\u05d9\u05ea'],
+  ['\u05d0\u05d5\u05db\u05dc \u05d5\u05d1\u05d9\u05e9\u05d5\u05dc', '\u05e7\u05e8\u05e9 \u05d7\u05d9\u05ea\u05d5\u05da \u05d5\u05e1\u05db\u05d9\u05df', '', ''],
+  ['\u05d0\u05d5\u05db\u05dc \u05d5\u05d1\u05d9\u05e9\u05d5\u05dc', '\u05e6\u05d9\u05d3\u05e0\u05d9\u05ea \u05d5\u05e7\u05e8\u05d7\u05d5\u05e0\u05d9\u05dd', '\u05d1\u05e1\u05d9\u05e1\u05d9', '\u05d9\u05e9 \u05d1\u05d7\u05e0\u05d9\u05d5\u05df 3 \u05de\u05e7\u05e8\u05e8\u05d9\u05dd \u05d5-2 \u05de\u05e7\u05e4\u05d9\u05d0\u05d9\u05dd \u05de\u05e9\u05d5\u05ea\u05e4\u05d9\u05dd'],
+  ['\u05d0\u05d5\u05db\u05dc \u05d5\u05d1\u05d9\u05e9\u05d5\u05dc', '\u05d1\u05e7\u05d1\u05d5\u05e7 \u05de\u05d9\u05dd \u05d0\u05d9\u05e9\u05d9', '\u05d1\u05e1\u05d9\u05e1\u05d9', '\u05d9\u05e9 \u05d1\u05e8\u05d6\u05d9\u05d5\u05ea \u05de\u05d9\u05dd \u05dc\u05e9\u05ea\u05d9\u05d9\u05d4'],
+  ['\u05d0\u05d5\u05db\u05dc \u05d5\u05d1\u05d9\u05e9\u05d5\u05dc', '\u05de\u05e0\u05d2\u05dc \u05d5\u05e4\u05d7\u05de\u05d9\u05dd', '\u05e0\u05d5\u05d7\u05d5\u05ea', '\u05de\u05e0\u05d2\u05dc \u05de\u05d5\u05ea\u05e8, \u05d1\u05e6\u05d9\u05d5\u05d3 \u05e2\u05e6\u05de\u05d9. \u05de\u05d3\u05d5\u05e8\u05d5\u05ea \u05d0\u05e1\u05d5\u05e8\u05d5\u05ea'],
+  ['\u05d0\u05d5\u05db\u05dc \u05d5\u05d1\u05d9\u05e9\u05d5\u05dc', '\u05de\u05dc\u05e7\u05d7\u05d9\u05d9\u05dd \u05d5\u05e0\u05d9\u05d9\u05e8 \u05db\u05e1\u05e3', '', ''],
+  ['\u05d0\u05d5\u05db\u05dc \u05d5\u05d1\u05d9\u05e9\u05d5\u05dc', '\u05e7\u05d5\u05e4\u05e1\u05d0\u05d5\u05ea \u05d0\u05d7\u05e1\u05d5\u05df \u05e2\u05dd \u05de\u05db\u05e1\u05d4', '', ''],
+  ['\u05d0\u05d5\u05db\u05dc \u05d5\u05d1\u05d9\u05e9\u05d5\u05dc', '\u05e7\u05e4\u05d4, \u05ea\u05d4 \u05d5\u05e1\u05d5\u05db\u05e8', '', ''],
+  ['\u05d0\u05d5\u05db\u05dc \u05d5\u05d1\u05d9\u05e9\u05d5\u05dc', '\u05e9\u05de\u05df, \u05de\u05dc\u05d7 \u05d5\u05ea\u05d1\u05dc\u05d9\u05e0\u05d9\u05dd', '', ''],
+  ['\u05d0\u05d5\u05db\u05dc \u05d5\u05d1\u05d9\u05e9\u05d5\u05dc', '\u05e4\u05d5\u05ea\u05d7\u05df \u05e7\u05d5\u05e4\u05e1\u05d0\u05d5\u05ea', '', ''],
+  ['\u05d0\u05d5\u05db\u05dc \u05d5\u05d1\u05d9\u05e9\u05d5\u05dc', '\u05de\u05e9\u05e7\u05d0\u05d5\u05ea', '', '\u05d1\u05dc\u05d9 \u05d1\u05e7\u05d1\u05d5\u05e7\u05d9 \u05d6\u05db\u05d5\u05db\u05d9\u05ea'],
+  ['\u05d0\u05d5\u05db\u05dc \u05d5\u05d1\u05d9\u05e9\u05d5\u05dc', '\u05d7\u05d8\u05d9\u05e4\u05d9\u05dd', '\u05e0\u05d5\u05d7\u05d5\u05ea', ''],
+  ['\u05d0\u05d5\u05db\u05dc \u05d5\u05d1\u05d9\u05e9\u05d5\u05dc', '\u05e1\u05d1\u05d5\u05df \u05db\u05dc\u05d9\u05dd \u05d5\u05e1\u05e4\u05d5\u05d2', '\u05d1\u05e1\u05d9\u05e1\u05d9', '\u05d9\u05e9 \u05db\u05d9\u05d5\u05e8\u05d9\u05dd \u05dc\u05e9\u05d8\u05d9\u05e4\u05ea \u05db\u05dc\u05d9\u05dd'],
+  ['\u05d0\u05d5\u05db\u05dc \u05d5\u05d1\u05d9\u05e9\u05d5\u05dc', '\u05de\u05d2\u05d1\u05ea \u05de\u05d8\u05d1\u05d7', '', ''],
+  ['\u05d0\u05d5\u05db\u05dc \u05d5\u05d1\u05d9\u05e9\u05d5\u05dc', '\u05e9\u05e7\u05d9\u05d5\u05ea \u05d6\u05d1\u05dc', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+
+  ['\u05d9\u05dd \u05d5\u05d7\u05d5\u05e3', '\u05d1\u05d2\u05d3 \u05d9\u05dd', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05d9\u05dd \u05d5\u05d7\u05d5\u05e3', '\u05de\u05d2\u05d1\u05ea \u05d7\u05d5\u05e3', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05d9\u05dd \u05d5\u05d7\u05d5\u05e3', '\u05e7\u05e8\u05dd \u05d4\u05d2\u05e0\u05d4', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05d9\u05dd \u05d5\u05d7\u05d5\u05e3', '\u05de\u05e9\u05e7\u05e4\u05d9 \u05e9\u05de\u05e9', '', ''],
+  ['\u05d9\u05dd \u05d5\u05d7\u05d5\u05e3', '\u05e9\u05de\u05e9\u05d9\u05d9\u05d4', '\u05e0\u05d5\u05d7\u05d5\u05ea', '\u05d9\u05e9 2 \u05e1\u05db\u05db\u05d5\u05ea \u05e6\u05dc \u05d1\u05d7\u05d5\u05e3 \u05d4\u05e8\u05d7\u05e6\u05d4'],
+  ['\u05d9\u05dd \u05d5\u05d7\u05d5\u05e3', '\u05de\u05d7\u05e6\u05dc\u05ea \u05dc\u05d7\u05d5\u05e3', '', ''],
+  ['\u05d9\u05dd \u05d5\u05d7\u05d5\u05e3', '\u05e0\u05e2\u05dc\u05d9 \u05d9\u05dd', '', ''],
+  ['\u05d9\u05dd \u05d5\u05d7\u05d5\u05e3', '\u05de\u05e9\u05e7\u05e4\u05ea \u05e9\u05d7\u05d9\u05d9\u05d4 \u05d0\u05d5 \u05e9\u05e0\u05d5\u05e8\u05e7\u05dc', '\u05e0\u05d5\u05d7\u05d5\u05ea', ''],
+  ['\u05d9\u05dd \u05d5\u05d7\u05d5\u05e3', '\u05db\u05d3\u05d5\u05e8 \u05d0\u05d5 \u05de\u05d8\u05e7\u05d5\u05ea', '\u05e0\u05d5\u05d7\u05d5\u05ea', ''],
+  ['\u05d9\u05dd \u05d5\u05d7\u05d5\u05e3', '\u05ea\u05d9\u05e7 \u05d7\u05d5\u05e3', '', ''],
+
+  ['\u05de\u05e7\u05dc\u05d7\u05d5\u05ea \u05d5\u05e9\u05d9\u05e8\u05d5\u05ea\u05d9\u05dd', '\u05de\u05d2\u05d1\u05ea \u05e8\u05d7\u05e6\u05d4', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05de\u05e7\u05dc\u05d7\u05d5\u05ea \u05d5\u05e9\u05d9\u05e8\u05d5\u05ea\u05d9\u05dd', '\u05e9\u05de\u05e4\u05d5 \u05d5\u05e1\u05d1\u05d5\u05df', '\u05d1\u05e1\u05d9\u05e1\u05d9', '\u05de\u05e7\u05dc\u05d7\u05d5\u05ea \u05d7\u05de\u05d5\u05ea \u05de-18:00 \u05e2\u05d3 09:00'],
+  ['\u05de\u05e7\u05dc\u05d7\u05d5\u05ea \u05d5\u05e9\u05d9\u05e8\u05d5\u05ea\u05d9\u05dd', '\u05de\u05d1\u05e8\u05e9\u05ea \u05d5\u05de\u05e9\u05d7\u05ea \u05e9\u05d9\u05e0\u05d9\u05d9\u05dd', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05de\u05e7\u05dc\u05d7\u05d5\u05ea \u05d5\u05e9\u05d9\u05e8\u05d5\u05ea\u05d9\u05dd', '\u05db\u05e4\u05db\u05e4\u05d9\u05dd \u05dc\u05de\u05e7\u05dc\u05d7\u05ea', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05de\u05e7\u05dc\u05d7\u05d5\u05ea \u05d5\u05e9\u05d9\u05e8\u05d5\u05ea\u05d9\u05dd', '\u05ea\u05d9\u05e7 \u05e8\u05d7\u05e6\u05d4', '', ''],
+  ['\u05de\u05e7\u05dc\u05d7\u05d5\u05ea \u05d5\u05e9\u05d9\u05e8\u05d5\u05ea\u05d9\u05dd', '\u05d3\u05d0\u05d5\u05d3\u05d5\u05e8\u05e0\u05d8 \u05d5\u05de\u05e1\u05e8\u05e7', '', ''],
+  ['\u05de\u05e7\u05dc\u05d7\u05d5\u05ea \u05d5\u05e9\u05d9\u05e8\u05d5\u05ea\u05d9\u05dd', '\u05de\u05d2\u05d1\u05d5\u05e0\u05d9\u05dd \u05dc\u05d7\u05d9\u05dd', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05de\u05e7\u05dc\u05d7\u05d5\u05ea \u05d5\u05e9\u05d9\u05e8\u05d5\u05ea\u05d9\u05dd', '\u05e0\u05d9\u05d9\u05e8 \u05d8\u05d5\u05d0\u05dc\u05d8 \u05dc\u05d2\u05d9\u05d1\u05d5\u05d9', '', ''],
+  ['\u05de\u05e7\u05dc\u05d7\u05d5\u05ea \u05d5\u05e9\u05d9\u05e8\u05d5\u05ea\u05d9\u05dd', '\u05de\u05d5\u05e6\u05e8\u05d9 \u05d4\u05d9\u05d2\u05d9\u05d9\u05e0\u05d4 \u05e0\u05e9\u05d9\u05ea', '', ''],
+
+  ['\u05d9\u05dc\u05d3\u05d9\u05dd', '\u05e4\u05e0\u05e1 \u05e8\u05d0\u05e9 \u05dc\u05db\u05dc \u05d9\u05dc\u05d3', '\u05d9\u05dc\u05d3\u05d9\u05dd', ''],
+  ['\u05d9\u05dc\u05d3\u05d9\u05dd', '\u05d1\u05d2\u05d3\u05d9\u05dd \u05e0\u05d5\u05e1\u05e4\u05d9\u05dd \u05dc\u05d4\u05d7\u05dc\u05e4\u05d4', '\u05d9\u05dc\u05d3\u05d9\u05dd', '\u05d7\u05d5\u05dc \u05d5\u05de\u05d9\u05dd - \u05de\u05ea\u05dc\u05db\u05dc\u05db\u05d9\u05dd \u05de\u05d4\u05e8'],
+  ['\u05d9\u05dc\u05d3\u05d9\u05dd', '\u05db\u05d5\u05d1\u05e2 \u05dc\u05db\u05dc \u05d9\u05dc\u05d3', '\u05d9\u05dc\u05d3\u05d9\u05dd', ''],
+  ['\u05d9\u05dc\u05d3\u05d9\u05dd', '\u05e6\u05e2\u05e6\u05d5\u05e2\u05d9 \u05d7\u05d5\u05dc', '\u05d9\u05dc\u05d3\u05d9\u05dd', ''],
+  ['\u05d9\u05dc\u05d3\u05d9\u05dd', '\u05d2\u05dc\u05d2\u05dc \u05d9\u05dd \u05d0\u05d5 \u05de\u05e6\u05d5\u05e4\u05d9\u05dd', '\u05d9\u05dc\u05d3\u05d9\u05dd', '\u05e8\u05d7\u05e6\u05d4 \u05e8\u05e7 \u05d1\u05d7\u05d5\u05e3 \u05d4\u05de\u05d5\u05db\u05e8\u05d6 \u05d5\u05d1\u05e9\u05e2\u05d5\u05ea \u05d4\u05d4\u05e6\u05dc\u05d4'],
+  ['\u05d9\u05dc\u05d3\u05d9\u05dd', '\u05de\u05e9\u05d7\u05e7\u05d9 \u05e7\u05d5\u05e4\u05e1\u05d4 \u05d5\u05e7\u05dc\u05e4\u05d9\u05dd', '\u05d9\u05dc\u05d3\u05d9\u05dd,\u05e0\u05d5\u05d7\u05d5\u05ea', ''],
+  ['\u05d9\u05dc\u05d3\u05d9\u05dd', '\u05d1\u05d5\u05d1\u05d4 \u05d0\u05d5 \u05d7\u05e4\u05e5 \u05de\u05e2\u05d1\u05e8 \u05dc\u05e9\u05d9\u05e0\u05d4', '\u05d9\u05dc\u05d3\u05d9\u05dd', ''],
+  ['\u05d9\u05dc\u05d3\u05d9\u05dd', '\u05e1\u05d9\u05e8 \u05dc\u05d9\u05dc\u05d4', '\u05d9\u05dc\u05d3\u05d9\u05dd', ''],
+  ['\u05d9\u05dc\u05d3\u05d9\u05dd', '\u05e2\u05d2\u05dc\u05d4 \u05d0\u05d5 \u05de\u05e0\u05e9\u05d0', '\u05ea\u05d9\u05e0\u05d5\u05e7\u05d5\u05ea', ''],
+  ['\u05d9\u05dc\u05d3\u05d9\u05dd', '\u05d7\u05d9\u05ea\u05d5\u05dc\u05d9\u05dd \u05d5\u05de\u05d2\u05d1\u05d5\u05e0\u05d9\u05dd', '\u05ea\u05d9\u05e0\u05d5\u05e7\u05d5\u05ea', ''],
+  ['\u05d9\u05dc\u05d3\u05d9\u05dd', '\u05de\u05d9\u05d8\u05ea \u05ea\u05d9\u05e0\u05d5\u05e7 \u05de\u05ea\u05e7\u05e4\u05dc\u05ea', '\u05ea\u05d9\u05e0\u05d5\u05e7\u05d5\u05ea', ''],
+  ['\u05d9\u05dc\u05d3\u05d9\u05dd', '\u05d1\u05e7\u05d1\u05d5\u05e7\u05d9\u05dd, \u05de\u05d5\u05e6\u05e5 \u05d5\u05d0\u05d5\u05db\u05dc \u05dc\u05ea\u05d9\u05e0\u05d5\u05e7', '\u05ea\u05d9\u05e0\u05d5\u05e7\u05d5\u05ea', ''],
+
+  ['\u05d1\u05d8\u05d9\u05d7\u05d5\u05ea', '\u05e2\u05e8\u05db\u05ea \u05e2\u05d6\u05e8\u05d4 \u05e8\u05d0\u05e9\u05d5\u05e0\u05d4', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05d1\u05d8\u05d9\u05d7\u05d5\u05ea', '\u05ea\u05e8\u05d5\u05e4\u05d5\u05ea \u05e7\u05d1\u05d5\u05e2\u05d5\u05ea', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05d1\u05d8\u05d9\u05d7\u05d5\u05ea', '\u05de\u05e9\u05db\u05da \u05db\u05d0\u05d1\u05d9\u05dd \u05d5\u05de\u05d5\u05e8\u05d9\u05d3 \u05d7\u05d5\u05dd', '', ''],
+  ['\u05d1\u05d8\u05d9\u05d7\u05d5\u05ea', '\u05d3\u05d5\u05d7\u05d4 \u05d9\u05ea\u05d5\u05e9\u05d9\u05dd', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05d1\u05d8\u05d9\u05d7\u05d5\u05ea', '\u05de\u05e9\u05d7\u05d4 \u05dc\u05e2\u05e7\u05d9\u05e6\u05d5\u05ea \u05d5\u05d0\u05e0\u05d8\u05d9-\u05d4\u05d9\u05e1\u05d8\u05de\u05d9\u05df', '', ''],
+  ['\u05d1\u05d8\u05d9\u05d7\u05d5\u05ea', '\u05e4\u05dc\u05e1\u05d8\u05e8\u05d9\u05dd', '', ''],
+  ['\u05d1\u05d8\u05d9\u05d7\u05d5\u05ea', '\u05db\u05e4\u05e4\u05d5\u05ea \u05e2\u05d1\u05d5\u05d3\u05d4 \u05dc\u05de\u05e0\u05d2\u05dc', '', ''],
+
+  ['\u05d7\u05e9\u05de\u05dc \u05d5\u05ea\u05d0\u05d5\u05e8\u05d4', '\u05e4\u05e0\u05e1 \u05e8\u05d0\u05e9', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05d7\u05e9\u05de\u05dc \u05d5\u05ea\u05d0\u05d5\u05e8\u05d4', '\u05e4\u05e0\u05e1 \u05d0\u05d5 \u05e2\u05e9\u05e9\u05d9\u05ea \u05dc\u05d0\u05d5\u05d4\u05dc', '\u05d1\u05e1\u05d9\u05e1\u05d9', '\u05d0\u05d9\u05df \u05d7\u05e9\u05de\u05dc \u05d1\u05d7\u05e0\u05d9\u05d5\u05df, \u05d5\u05d2\u05e0\u05e8\u05d8\u05d5\u05e8\u05d9\u05dd \u05d0\u05e1\u05d5\u05e8\u05d9\u05dd'],
+  ['\u05d7\u05e9\u05de\u05dc \u05d5\u05ea\u05d0\u05d5\u05e8\u05d4', '\u05e1\u05d5\u05dc\u05dc\u05d5\u05ea \u05e8\u05d6\u05e8\u05d1\u05d9\u05d5\u05ea', '', ''],
+  ['\u05d7\u05e9\u05de\u05dc \u05d5\u05ea\u05d0\u05d5\u05e8\u05d4', '\u05e9\u05e8\u05e9\u05e8\u05ea \u05d0\u05d5\u05e8\u05d5\u05ea \u05e2\u05dc \u05e1\u05d5\u05dc\u05dc\u05d5\u05ea', '\u05e0\u05d5\u05d7\u05d5\u05ea', ''],
+
+  ['\u05e1\u05dc\u05d5\u05dc\u05e8\u05d9 \u05d5\u05de\u05d7\u05e9\u05d1\u05d9\u05dd', '\u05de\u05d8\u05e2\u05df \u05d5\u05db\u05d1\u05dc \u05dc\u05d8\u05dc\u05e4\u05d5\u05df', '\u05d1\u05e1\u05d9\u05e1\u05d9', '\u05d9\u05e9 \u05d1\u05d7\u05e0\u05d9\u05d5\u05df 20 \u05e0\u05e7\u05d5\u05d3\u05d5\u05ea \u05d8\u05e2\u05d9\u05e0\u05d4'],
+  ['\u05e1\u05dc\u05d5\u05dc\u05e8\u05d9 \u05d5\u05de\u05d7\u05e9\u05d1\u05d9\u05dd', '\u05e1\u05d5\u05dc\u05dc\u05d4 \u05e0\u05d9\u05d9\u05d3\u05ea (\u05e4\u05d0\u05d5\u05d5\u05e8 \u05d1\u05e0\u05e7)', '\u05d1\u05e1\u05d9\u05e1\u05d9', ''],
+  ['\u05e1\u05dc\u05d5\u05dc\u05e8\u05d9 \u05d5\u05de\u05d7\u05e9\u05d1\u05d9\u05dd', '\u05de\u05d8\u05e2\u05df \u05dc\u05e8\u05db\u05d1', '', ''],
+  ['\u05e1\u05dc\u05d5\u05dc\u05e8\u05d9 \u05d5\u05de\u05d7\u05e9\u05d1\u05d9\u05dd', '\u05d0\u05d5\u05d6\u05e0\u05d9\u05d5\u05ea', '\u05e0\u05d5\u05d7\u05d5\u05ea', '\u05d0\u05e1\u05d5\u05e8 \u05dc\u05d4\u05e9\u05de\u05d9\u05e2 \u05de\u05d5\u05d6\u05d9\u05e7\u05d4 \u05d1\u05d7\u05e0\u05d9\u05d5\u05df'],
+
+  ['\u05e6\u05d9\u05d5\u05d3 \u05db\u05dc\u05dc\u05d9', '\u05e2\u05d2\u05dc\u05d4 \u05dc\u05d4\u05d5\u05d1\u05dc\u05ea \u05e6\u05d9\u05d5\u05d3', '\u05e0\u05d5\u05d7\u05d5\u05ea', '\u05d0\u05e4\u05e9\u05e8 \u05dc\u05e7\u05d1\u05dc \u05e2\u05d2\u05dc\u05d4 \u05d1\u05d7\u05e0\u05d9\u05d5\u05df \u05d1\u05d4\u05e4\u05e7\u05d3\u05ea \u05ea\u05e2\u05d5\u05d3\u05d4 \u05de\u05d6\u05d4\u05d4'],
+  ['\u05e6\u05d9\u05d5\u05d3 \u05db\u05dc\u05dc\u05d9', '\u05d0\u05e8\u05d2\u05d6\u05d9\u05dd \u05d0\u05d5 \u05ea\u05d9\u05e7\u05d9\u05dd \u05dc\u05d0\u05e8\u05d9\u05d6\u05d4', '', ''],
+  ['\u05e6\u05d9\u05d5\u05d3 \u05db\u05dc\u05dc\u05d9', '\u05e9\u05e7\u05d9\u05d5\u05ea \u05d0\u05d8\u05d5\u05de\u05d5\u05ea \u05dc\u05d1\u05d2\u05d3\u05d9\u05dd \u05e8\u05d8\u05d5\u05d1\u05d9\u05dd', '', ''],
+  ['\u05e6\u05d9\u05d5\u05d3 \u05db\u05dc\u05dc\u05d9', '\u05de\u05ea\u05e7\u05df \u05d9\u05d9\u05d1\u05d5\u05e9 \u05de\u05ea\u05e7\u05e4\u05dc \u05d5\u05d0\u05d8\u05d1\u05d9\u05dd', '\u05e0\u05d5\u05d7\u05d5\u05ea', '\u05d0\u05e1\u05d5\u05e8 \u05dc\u05e7\u05e9\u05d5\u05e8 \u05d7\u05d1\u05dc\u05d9\u05dd \u05d1\u05d9\u05df \u05d4\u05e2\u05e6\u05d9\u05dd'],
+  ['\u05e6\u05d9\u05d5\u05d3 \u05db\u05dc\u05dc\u05d9', '\u05e1\u05db\u05d9\u05df \u05e8\u05d1-\u05ea\u05db\u05dc\u05d9\u05ea\u05d9', '', ''],
+  ['\u05e6\u05d9\u05d5\u05d3 \u05db\u05dc\u05dc\u05d9', '\u05e1\u05e8\u05d8 \u05d4\u05d3\u05d1\u05e7\u05d4 \u05d5\u05d0\u05d6\u05d9\u05e7\u05d5\u05e0\u05d9\u05dd', '', ''],
+  ['\u05e6\u05d9\u05d5\u05d3 \u05db\u05dc\u05dc\u05d9', '\u05ea\u05d9\u05e7 \u05d2\u05d1 \u05e7\u05d8\u05df \u05dc\u05d8\u05d9\u05d5\u05dc\u05d9\u05dd', '', ''],
+
+  ['\u05e9\u05d5\u05e0\u05d5\u05ea', '\u05ea\u05e2\u05d5\u05d3\u05d4 \u05de\u05d6\u05d4\u05d4', '\u05d1\u05e1\u05d9\u05e1\u05d9', '\u05de\u05e4\u05e7\u05d9\u05d3\u05d9\u05dd \u05d1\u05d4\u05d2\u05e2\u05d4 \u05dc\u05d7\u05e0\u05d9\u05d5\u05df'],
+  ['\u05e9\u05d5\u05e0\u05d5\u05ea', '\u05db\u05e8\u05d8\u05d9\u05e1\u05d9 \u05d4\u05e0\u05d7\u05d4 \u05d1\u05ea\u05d5\u05e7\u05e3', '', '\u05de\u05d8\u05de\u05d5\u05df, \u05de\u05d9\u05dc\u05d5\u05d0\u05d9\u05dd, \u05e1\u05d8\u05d5\u05d3\u05e0\u05d8, \u05d0\u05d6\u05e8\u05d7 \u05d5\u05ea\u05d9\u05e7 - \u05d1\u05d4\u05e6\u05d2\u05ea \u05db\u05e8\u05d8\u05d9\u05e1'],
+  ['\u05e9\u05d5\u05e0\u05d5\u05ea', '\u05d0\u05de\u05e6\u05e2\u05d9 \u05ea\u05e9\u05dc\u05d5\u05dd', '\u05d1\u05e1\u05d9\u05e1\u05d9', '\u05de\u05e9\u05dc\u05de\u05d9\u05dd \u05d1\u05e7\u05d5\u05e4\u05d4 \u05d1\u05d4\u05d2\u05e2\u05d4'],
+  ['\u05e9\u05d5\u05e0\u05d5\u05ea', '\u05de\u05e9\u05e7\u05e4\u05d9 \u05e8\u05d0\u05d9\u05d9\u05d4 \u05d0\u05d5 \u05e2\u05d3\u05e9\u05d5\u05ea', '', ''],
+  ['\u05e9\u05d5\u05e0\u05d5\u05ea', '\u05e1\u05e4\u05e8', '\u05e0\u05d5\u05d7\u05d5\u05ea', '']
+];
+
+var GEAR_TAB = '\u05e6\u05d9\u05d5\u05d3';
+var GEAR_HEAD = ['\u05de\u05e1\u05e4\u05e8', '\u05e1\u05d8\u05d8\u05d5\u05e1', '\u05e7\u05d8\u05d2\u05d5\u05e8\u05d9\u05d4', '\u05e4\u05e8\u05d9\u05d8', '\u05ea\u05d2\u05d9\u05d5\u05ea', '\u05d4\u05e2\u05e8\u05d4', '\u05e0\u05e9\u05dc\u05d7', '\u05d0\u05d5\u05e9\u05e8', '\u05de\u05d6\u05d4\u05d4 \u05e9\u05dc\u05d9\u05d7\u05d4'];
+var GEAR_COL = { id: 0, status: 1, section: 2, name: 3, tags: 4, note: 5, submitted: 6, approved: 7, clientId: 8 };
+var GEAR_STATUSES = [ST.pending, ST.approved, ST.rejected, ST.hidden];
+var GEAR_NAME_MAX = 60;
+var GEAR_CACHE = 'gear-v1';
+
+// A store without gear (older test mocks) reads as an empty tab.
+function gearRows_(ts) { return ts.gear ? ts.gear() : []; }
+
+// The starter rows, as written into a new tab. "\u05d0\u05d5\u05e9\u05e8" carries a label, not a date, so they are not
+// re-stamped one by one on the first edit.
+function gearSeedRows_() {
+  return GEAR_SEED_.map(function (g, i) {
+    return [i + 1, ST.approved, g[0], g[1], g[2], g[3], '', '\u05e8\u05e9\u05d9\u05de\u05d4 \u05d4\u05ea\u05d7\u05dc\u05ea\u05d9\u05ea', 'seed-' + (i + 1)];
+  });
+}
+
+// Public: approved items in sheet order. Only these fields leave the sheet.
+function gearPublic_(ts) {
+  var sections = GEAR_SECTIONS_.slice();
+  var items = gearRows_(ts).filter(function (g) { return g.status === ST.approved && String(g.name) !== ''; })
+    .map(function (g) {
+      var section = String(g.section) || '\u05e9\u05d5\u05e0\u05d5\u05ea';
+      if (sections.indexOf(section) < 0) sections.push(section);
+      return { id: +g.id, section: section, name: unguard_(g.name),
+               tags: String(g.tags || '').split(/[,\u060c]/).map(function (t) { return t.trim(); }).filter(Boolean),
+               note: unguard_(g.note) };
+    });
+  return { ok: true, sections: sections, items: items };
+}
+
+function submitGear_(req, ts) {
+  var clientId = checkClientId_(req.clientId);
+  if (req.hp) return { ok: true, id: 0 };
+  var dup = gearRows_(ts).filter(function (g) { return g.clientId === clientId; })[0];
+  if (dup) return { ok: true, id: +dup.id };
+  if (GEAR_SECTIONS_.indexOf(req.section) < 0) fail_('bad_category');
+  var name = tipText_(String(req.name || '').replace(/\n/g, ' '), 2, GEAR_NAME_MAX);
+  if (pendingCount_(ts) >= MAX_PENDING) fail_('busy');
+  var g = { id: nextId_(gearRows_(ts)), status: ST.pending, section: req.section, name: name, tags: '', note: '',
+            submitted: ts.now(), approved: '', clientId: clientId };
+  ts.addGear(g);
+  return { ok: true, id: g.id };
+}
+
 // After Yair edits a status: stamp the approval time, and carry out merges.
 // Safe to run any number of times - a merge's comment carries the id "merge-<tip>", so it is made once.
 function housekeep_(ts) {
@@ -496,6 +679,7 @@ function housekeep_(ts) {
   }
   stamp(ts.tips(), ts.updateTip);
   stamp(ts.comments(), ts.updateComment);
+  if (ts.gear) stamp(ts.gear(), ts.updateGear);
   ts.tips().forEach(function (t) {
     if (t.status !== ST.merged) return;
     var target = tipNumber_(t.mergedInto), key = 'merge-' + t.id;
@@ -516,8 +700,10 @@ function pendingDigest_(ts, seen, sheetUrl) {
   seen = seen || {};
   var tips = ts.tips().filter(function (t) { return t.status === ST.pending; });
   var cmts = ts.comments().filter(function (c) { return c.status === ST.pending; });
+  var gear = gearRows_(ts).filter(function (g) { return g.status === ST.pending; });
   var fresh = tips.some(function (t) { return +t.id > (seen.tip || 0); }) ||
-              cmts.some(function (c) { return +c.id > (seen.comment || 0); });
+              cmts.some(function (c) { return +c.id > (seen.comment || 0); }) ||
+              gear.some(function (g) { return +g.id > (seen.gear || 0); });
   if (!fresh) return null;
   var titles = {};
   ts.tips().forEach(function (t) { titles[+t.id] = unguard_(t.title); });
@@ -536,19 +722,26 @@ function pendingDigest_(ts, seen, sheetUrl) {
       lines.push('  ' + c.id + '. \u05e2\u05dc \u05d8\u05d9\u05e4 ' + k + ' (' + (titles[k] || '?') + '): ' + unguard_(c.text).slice(0, 80));
     });
   }
+  if (gear.length) {
+    if (lines.length) lines.push('');
+    lines.push('\u05e4\u05e8\u05d9\u05d8\u05d9 \u05e6\u05d9\u05d5\u05d3 \u05e9\u05d4\u05d5\u05e6\u05e2\u05d5 (' + gear.length + '):');
+    gear.forEach(function (g) { lines.push('  ' + g.id + '. [' + g.section + '] ' + unguard_(g.name)); });
+    lines.push('  (\u05d1\u05dc\u05e9\u05d5\u05e0\u05d9\u05ea ' + GEAR_TAB + ': \u05d0\u05e4\u05e9\u05e8 \u05dc\u05ea\u05e7\u05df \u05d0\u05ea \u05d4\u05e7\u05d8\u05d2\u05d5\u05e8\u05d9\u05d4 \u05dc\u05e4\u05e0\u05d9 \u05d4\u05d0\u05d9\u05e9\u05d5\u05e8)');
+  }
   lines.push('', '\u05dc\u05d0\u05d9\u05e9\u05d5\u05e8: \u05de\u05e9\u05e0\u05d9\u05dd \u05d0\u05ea \u05e2\u05de\u05d5\u05d3\u05ea "\u05e1\u05d8\u05d8\u05d5\u05e1" \u05dc"\u05de\u05d0\u05d5\u05e9\u05e8" (\u05d0\u05d5 \u05e0\u05d3\u05d7\u05d4 / \u05de\u05d5\u05d6\u05d2 / \u05d4\u05d5\u05e1\u05ea\u05e8).', sheetUrl || '');
-  return { subject: '\u05d0\u05db\u05d6\u05d9\u05d1: ' + (tips.length + cmts.length) + ' \u05de\u05de\u05ea\u05d9\u05e0\u05d9\u05dd \u05dc\u05d0\u05d9\u05e9\u05d5\u05e8',
-           body: lines.join('\n'), seen: { tip: nextId_(ts.tips()) - 1, comment: nextId_(ts.comments()) - 1 } };
+  return { subject: '\u05d0\u05db\u05d6\u05d9\u05d1: ' + (tips.length + cmts.length + gear.length) + ' \u05de\u05de\u05ea\u05d9\u05e0\u05d9\u05dd \u05dc\u05d0\u05d9\u05e9\u05d5\u05e8',
+           body: lines.join('\n'),
+           seen: { tip: nextId_(ts.tips()) - 1, comment: nextId_(ts.comments()) - 1, gear: nextId_(gearRows_(ts)) - 1 } };
 }
 
 // Simple trigger: runs on every hand edit of the sheet.
 function onEdit(e) {
   var name = e && e.range ? e.range.getSheet().getName() : '';
-  if (name !== TIP_TABS.tips && name !== TIP_TABS.comments) return;
+  if (name !== TIP_TABS.tips && name !== TIP_TABS.comments && name !== GEAR_TAB) return;
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) return;          // the next edit or digest run catches up
   try { housekeep_(tipsStore_()); } finally { lock.releaseLock(); }
-  CacheService.getScriptCache().remove(TIPS_CACHE);
+  CacheService.getScriptCache().removeAll([TIPS_CACHE, GEAR_CACHE]);
 }
 
 // Time trigger (every 2 hours, installed by enableAlerts): email the owner if something new waits.
@@ -563,7 +756,7 @@ function sendDigest() {
     try { seen = JSON.parse(props.getProperty('DIGEST_SEEN') || '{}'); } catch (x) { /* start over */ }
     d = pendingDigest_(ts, seen, SpreadsheetApp.getActiveSpreadsheet().getUrl());
   } finally { lock.releaseLock(); }
-  CacheService.getScriptCache().remove(TIPS_CACHE);
+  CacheService.getScriptCache().removeAll([TIPS_CACHE, GEAR_CACHE]);
   if (!d) return;
   MailApp.sendEmail(Session.getEffectiveUser().getEmail(), d.subject, d.body);
   props.setProperty('DIGEST_SEEN', JSON.stringify(d.seen));
@@ -575,8 +768,9 @@ function enableAlerts() {
     if (t.getHandlerFunction() === 'sendDigest') ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger('sendDigest').timeBased().everyHours(2).create();
-  tipsStore_().tips();                       // make sure both tabs exist
+  tipsStore_().tips();                       // make sure the tabs exist (\u05e6\u05d9\u05d5\u05d3 is written with the starter list)
   tipsStore_().comments();
+  tipsStore_().gear();
   SpreadsheetApp.getUi().alert('\u05d4\u05ea\u05e8\u05d0\u05d5\u05ea \u05d4\u05d5\u05e4\u05e2\u05dc\u05d5: \u05db\u05dc \u05e9\u05e2\u05ea\u05d9\u05d9\u05dd, \u05d0\u05dd \u05d4\u05d2\u05d9\u05e2 \u05de\u05e9\u05d4\u05d5 \u05d7\u05d3\u05e9 \u05dc\u05d0\u05d9\u05e9\u05d5\u05e8, \u05d9\u05d9\u05e9\u05dc\u05d7 \u05d0\u05dc\u05d9\u05da \u05de\u05d9\u05d9\u05dc \u05d0\u05d7\u05d3 \u05e2\u05dd \u05db\u05dc \u05d4\u05de\u05de\u05ea\u05d9\u05e0\u05d9\u05dd.');
 }
 
@@ -653,11 +847,21 @@ function tipsStore_() {
     lists.forEach(function (l) { dropdown(sh, l[0], l[1]); });
     return sh;
   }
-  var tipSh = null, cmtSh = null, tipRows = null, cmtRows = null;
+  var tipSh = null, cmtSh = null, gearSh = null, tipRows = null, cmtRows = null, gearRows = null;
   function tipSheet() {
     return tipSh || (tipSh = tab(TIP_TABS.tips, TIP_HEAD, [[TIP_COL.status, TIP_STATUSES], [TIP_COL.category, TIP_CATEGORIES]]));
   }
   function cmtSheet() { return cmtSh || (cmtSh = tab(TIP_TABS.comments, CMT_HEAD, [[CMT_COL.status, CMT_STATUSES]])); }
+  function gearSheet() {
+    if (gearSh) return gearSh;
+    var fresh = !ss.getSheetByName(GEAR_TAB);
+    gearSh = tab(GEAR_TAB, GEAR_HEAD, [[GEAR_COL.status, GEAR_STATUSES], [GEAR_COL.section, GEAR_SECTIONS_]]);
+    if (fresh) {                               // the starter list, in one write
+      var seed = gearSeedRows_();
+      gearSh.getRange(2, 1, seed.length, GEAR_HEAD.length).setValues(seed);
+    }
+    return gearSh;
+  }
   function read(sh, cols, width) {
     var n = sh.getLastRow() - 1;
     var v = n > 0 ? sh.getRange(2, 1, n, width).getValues() : [];
@@ -678,6 +882,9 @@ function tipsStore_() {
     addComment: function (r) { add(cmtSheet(), store.comments(), r, CMT_COL); },
     updateTip: function (r) { update(tipSheet(), r, TIP_COL, TIP_HEAD.length); },
     updateComment: function (r) { update(cmtSheet(), r, CMT_COL, CMT_HEAD.length); },
+    gear: function () { return gearRows || (gearRows = read(gearSheet(), GEAR_COL, GEAR_HEAD.length)); },
+    addGear: function (r) { add(gearSheet(), store.gear(), r, GEAR_COL); },
+    updateGear: function (r) { update(gearSheet(), r, GEAR_COL, GEAR_HEAD.length); },
     now: function () { return new Date(); }       // a real date: the sheet shows it in its own (day-first) locale
   };
   return store;
