@@ -48,6 +48,10 @@ A fifth tab, **ציוד**, with two views:
 
 #### 5.1 Backend
 - [ ] `gear-seed.js`: starter list (section, item, tags, note), shared by the site and `Code.gs` via `//@include`
+  - the file is written (101 items, `GEAR_SECTIONS_` + `GEAR_SEED_`, item N = row id N). Still missing: the `//@include gear-seed.js` line in `Code.source.gs`.
+  - **Implementation notes (from the planning session):**
+    - Backend: add `gear()`, `addGear()` and `updateGear()` to `tipsStore_()`. The tab is created with the seed rows written in one `setValues`. Read gear rows through a helper that tolerates a store with no `gear` (the test mocks). `pendingCount_` adds pending gear. `pendingDigest_` gets `seen.gear` and a "פריטי ציוד שהוצעו" section. `housekeep_` stamps gear. `onEdit` also watches the ציוד tab and clears its cache (`GEAR_CACHE`). The public `gear` action returns {sections, items:[{id, section, name, tags:[], note}]}.
+    - Site: `gear.js`, modelled on `tips.js` (outbox + cache + badges). localStorage `achziv-gear-v1` = {picked:{id:1}, packed:{key:1}, custom:[{cid, id|null, section, name, at, failed?, body}]}. Keys are `g<id>` / `c<cid>`. On approval, a custom item whose `id` is in the general list merges into it (picked + packed carried over). If the tab bar overflows at 360px with 5 tabs, shorten "על המקום ונגישות".
 - [ ] `ציוד` tab: created and seeded on first use, with status and category dropdowns
 - [ ] Actions `gear` (cached) and `submitGear`; pending cap shared with the tips
 - [ ] Digest section for suggested items; approval stamp; cache cleared on edit
