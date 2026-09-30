@@ -99,3 +99,150 @@ console.log('all backend tests passed');
   assert.deepStrictEqual(t.nights.find(n => n[0].endsWith('09/10')).slice(1), [30, 1, 'כן']);
 }
 console.log('organizer tests passed');
+
+const P = (x) => JSON.parse(JSON.stringify(x));
+
+// ---------- search (search.js, inlined into Code.gs) ----------
+{
+  assert.strictEqual(ctx.searchNorm_('אֹהֶל, מִטְבָּח!'), 'אהל מטבח');             // niqqud and punctuation gone
+  assert.strictEqual(ctx.searchNorm_('חוף ים'), 'חופ ימ');                          // final letters -> regular
+  assert.deepStrictEqual(P(ctx.searchWords_('של האוהל על החוף ו')), ['האוהל', 'החופ']); // stop words, 1-letter words
+  assert.deepStrictEqual(P(ctx.searchForms_('והאוהלים')), ['והאוהלים', 'האוהלים', 'אוהלים']);  // up to two prefixes
+  assert.deepStrictEqual(P(ctx.searchForms_('מימ')), ['מימ']);                       // never below 3 letters
+  const tips = [
+    { id: 1, title: 'יתדות לאוהל', text: 'בחול צריך יתדות ארוכות', category: 'אוהלים ולינה' },
+    { id: 2, title: 'מים קרים', text: 'צידנית עם קרח לילדים', category: 'אוכל ובישול' },
+    { id: 3, title: 'פנס ראש', text: 'עדיף על פנס יד בלילה', category: 'חשמל ותאורה' }
+  ];
+  const ids = (a) => a.map(t => t.id);
+  assert.deepStrictEqual(ids(ctx.searchTips_('אוהל', tips)), [1]);                  // "לאוהל" found by "אוהל"
+  assert.deepStrictEqual(ids(ctx.searchTips_('והאוהל', tips)), [1]);                // prefixes on the query side too
+  assert.deepStrictEqual(ids(ctx.searchTips_('צידני', tips)), [2]);                 // typing: start of a word
+  assert.deepStrictEqual(ids(ctx.searchTips_('פנס מים', tips)), []);                // every word must match
+  assert.deepStrictEqual(ids(ctx.searchTips_('תאורה', tips)), [3]);                 // category counts
+  assert.deepStrictEqual(ids(ctx.searchTips_('  ', tips)), [1, 2, 3]);              // empty query = all
+  assert.deepStrictEqual(ids(ctx.searchTips_('יריעה', tips)), []);                  // word-based, not meaning-based
+  const sim = P(ctx.similarTips_('יתדות לחול', 'אוהל עם יתדות', tips, 3));
+  assert.strictEqual(sim.length, 1); assert.strictEqual(sim[0].tip.id, 1);
+  assert.deepStrictEqual(P(ctx.similarTips_('', '', tips, 3)), []);
+}
+console.log('search tests passed');
+
+// ---------- tips ----------
+{
+  function tipStore() {
+    const tips = [], comments = [];
+    return {
+      tipsRows: tips, commentRows: comments,
+      tips: () => tips, comments: () => comments,
+      addTip: (r) => tips.push(r), addComment: (r) => comments.push(r),
+      updateTip: () => {}, updateComment: () => {},
+      now: () => '30/09/2026 12:00'
+    };
+  }
+  const ts = tipStore(), T = (req) => P(ctx.route(req, null, ts));
+  let n = 0;
+  const tip = (extra) => Object.assign({ action: 'submitTip', clientId: 'autoclient' + (++n),
+    category: 'ציוד', title: 'פנס ראש', text: 'עדיף על פנס יד בלילה', author: 'דנה' }, extra);
+
+  // submit -> pending, not public
+  let r = T(tip({ clientId: 'client-0001' }));
+  assert.ok(r.ok); assert.strictEqual(r.id, 1);
+  assert.strictEqual(ts.tipsRows[0].status, 'ממתין');
+  assert.deepStrictEqual(T({ action: 'tips' }).tips, []);
+  assert.ok(T({ action: 'tips' }).categories.includes('סלולרי ומחשבים'));
+
+  // a retry with the same client id does not duplicate
+  r = T(tip({ clientId: 'client-0001', title: 'something else' }));
+  assert.deepStrictEqual([r.ok, r.id, ts.tipsRows.length], [true, 1, 1]);
+
+  // validation
+  assert.strictEqual(T(tip({ category: 'לא קיים' })).error, 'bad_category');
+  assert.strictEqual(T(tip({ title: 'א' })).error, 'too_short');
+  assert.strictEqual(T(tip({ title: 'א'.repeat(61) })).error, 'too_long');
+  assert.strictEqual(T(tip({ text: 'א'.repeat(401) })).error, 'too_long');
+  assert.strictEqual(T(tip({ author: 'א'.repeat(41) })).error, 'too_long');
+  assert.strictEqual(T(tip({ clientId: 'short' })).error, 'bad_request');
+  assert.strictEqual(T(tip({ clientId: 'bad id with spaces' })).error, 'bad_request');
+  assert.strictEqual(ts.tipsRows.length, 1);
+
+  // bot trap: looks fine, writes nothing
+  r = T(tip({ hp: 'http://spam' }));
+  assert.ok(r.ok); assert.strictEqual(ts.tipsRows.length, 1);
+
+  // formula guard, whitespace tidy
+  T(tip({ clientId: 'client-0002', title: '=HYPERLINK("x")', text: 'שורה   אחת\n\n\n\nשורה שתיים ' }));
+  assert.strictEqual(ts.tipsRows[1].title, "'=HYPERLINK(\"x\")");
+  assert.strictEqual(ts.tipsRows[1].text, 'שורה אחת\n\nשורה שתיים');
+
+  // "דומה ל…" filled from the closest existing tip
+  T(tip({ clientId: 'client-0003', title: 'פנס לילה', text: 'פנס ראש עדיף' }));
+  assert.strictEqual(ts.tipsRows[2].similar, '1: פנס ראש');
+  T(tip({ clientId: 'client-0004', category: 'ים וחוף', title: 'שמשייה', text: 'יש רוח חזקה בחוף' }));
+  assert.strictEqual(ts.tipsRows[3].similar, '');
+
+  // approve in the sheet -> public, stamped; the guard quote is not shown
+  ts.tipsRows[0].status = 'מאושר'; ts.tipsRows[1].status = 'מאושר';
+  let hk = ctx.housekeep_(ts);
+  assert.strictEqual(hk.stamped, 2); assert.strictEqual(ts.tipsRows[0].approved, '30/09/2026 12:00');
+  assert.strictEqual(ctx.housekeep_(ts).stamped, 0);                                // already stamped
+  let pub = T({ action: 'tips' });
+  assert.deepStrictEqual(pub.tips.map(t => t.id), [2, 1]);                          // newest first
+  assert.strictEqual(pub.tips[0].title, '=HYPERLINK("x")');
+  assert.deepStrictEqual(Object.keys(pub.tips[1]).sort(), ['author', 'category', 'comments', 'id', 'text', 'title']);
+  assert.ok(!JSON.stringify(pub).includes('client-'));                              // client ids never leave
+
+  // comments: only on approved tips; pending until approved
+  assert.strictEqual(T({ action: 'submitComment', clientId: 'cmt-00001', tipId: 3, text: 'מסכים' }).error, 'not_found');
+  assert.strictEqual(T({ action: 'submitComment', clientId: 'cmt-00001', tipId: 99, text: 'מסכים' }).error, 'not_found');
+  r = T({ action: 'submitComment', clientId: 'cmt-00001', tipId: 1, text: 'מסכים, גם עם סוללה רזרבית', author: '' });
+  assert.deepStrictEqual([r.ok, r.id], [true, 1]);
+  assert.strictEqual(T({ action: 'submitComment', clientId: 'cmt-00001', tipId: 1, text: 'שוב' }).id, 1);   // retry
+  assert.strictEqual(ts.commentRows.length, 1);
+  assert.strictEqual(T({ action: 'submitComment', clientId: 'cmt-00002', tipId: 1, text: 'א'.repeat(301) }).error, 'too_long');
+  assert.deepStrictEqual(T({ action: 'tips' }).tips[1].comments, []);
+  ts.commentRows[0].status = 'מאושר'; ctx.housekeep_(ts);
+  assert.deepStrictEqual(T({ action: 'tips' }).tips[1].comments, [{ id: 1, text: 'מסכים, גם עם סוללה רזרבית', author: '' }]);
+
+  // merge: tip 3 -> comment on tip 1, once
+  ts.tipsRows[2].status = 'מוזג'; ts.tipsRows[2].mergedInto = 'טיפ 1';
+  hk = ctx.housekeep_(ts);
+  assert.strictEqual(hk.merged, 1); assert.strictEqual(ctx.housekeep_(ts).merged, 0);
+  pub = T({ action: 'tips' });
+  assert.deepStrictEqual(pub.tips.map(t => t.id), [2, 1]);                          // merged tip not listed
+  assert.deepStrictEqual(pub.tips[1].comments.map(c => c.text), ['מסכים, גם עם סוללה רזרבית', 'פנס לילה: פנס ראש עדיף']);
+  assert.strictEqual(pub.tips[1].comments[1].author, 'דנה');
+  // merge into a tip that is not approved, or into itself, waits
+  ts.tipsRows[3].status = 'מוזג'; ts.tipsRows[3].mergedInto = 3;
+  assert.strictEqual(ctx.housekeep_(ts).merged, 0);
+  ts.tipsRows[3].mergedInto = 4;
+  assert.strictEqual(ctx.housekeep_(ts).merged, 0);
+
+  // hidden leaves the site
+  ts.tipsRows[1].status = 'הוסתר';
+  assert.deepStrictEqual(T({ action: 'tips' }).tips.map(t => t.id), [1]);
+
+  // digest: only when something new arrived; lists everything waiting
+  assert.strictEqual(ctx.pendingDigest_(ts, {}, 'https://sheet'), null);            // nothing pending now
+  T(tip({ clientId: 'client-0005', title: 'מטען נייד', text: 'אין חשמל בחניון', category: 'סלולרי ומחשבים' }));
+  T({ action: 'submitComment', clientId: 'cmt-00003', tipId: 1, text: 'תודה!' });
+  const d1 = P(ctx.pendingDigest_(ts, {}, 'https://sheet'));
+  assert.strictEqual(d1.subject, 'אכזיב: 2 ממתינים לאישור');
+  assert.ok(d1.body.includes('5. [סלולרי ומחשבים] מטען נייד'), d1.body);
+  assert.ok(d1.body.includes('על טיפ 1 (פנס ראש): תודה!') && d1.body.includes('https://sheet'), d1.body);
+  assert.deepStrictEqual(d1.seen, { tip: 5, comment: 3 });
+  assert.strictEqual(ctx.pendingDigest_(ts, d1.seen, ''), null);                    // same items: no second email
+  T({ action: 'submitComment', clientId: 'cmt-00004', tipId: 1, text: 'עוד אחת' });
+  assert.strictEqual(ctx.pendingDigest_(ts, d1.seen, '').subject, 'אכזיב: 3 ממתינים לאישור');  // new: lists all 3
+
+  // pending cap
+  const full = tipStore();
+  for (let i = 1; i <= 200; i++) full.tipsRows.push({ id: i, status: 'ממתין', clientId: 'x' + i });
+  assert.strictEqual(ctx.route(tip({ clientId: 'client-cap01' }), null, full).error, 'busy');
+  full.tipsRows[0].status = 'מאושר';                                               // 199 tips + 1 comment waiting
+  full.commentRows.push({ id: 1, tipId: 1, status: 'ממתין', clientId: 'y1' });
+  assert.strictEqual(ctx.route({ action: 'submitComment', clientId: 'cmt-cap01', tipId: 1, text: 'היי' }, null, full).error, 'busy');
+  full.tipsRows[1].status = 'נדחה';
+  assert.ok(ctx.route(tip({ clientId: 'client-cap02' }), null, full).ok);
+}
+console.log('tips tests passed');

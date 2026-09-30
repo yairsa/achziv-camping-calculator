@@ -32,3 +32,14 @@ A **separate** Google Sheet the script keeps up to date after every registration
 **Connect it once:** in the registration sheet, reload the page, then **מארגנים → חיבור לגיליון המארגנים** and paste the organizers' sheet link. **מארגנים → סנכרון עכשיו** refreshes it by hand.
 
 This part of the script opens a second spreadsheet, so Google asks for the wider "spreadsheets" permission once, on the next deployment.
+
+## Tips (טיפים) — approving
+
+Tips and comments land in two tabs of the **registration** sheet, **טיפים** and **תגובות**. The script creates them the first time anyone opens the tips tab or submits something. Nothing reaches the site until you approve it.
+
+- **Approve:** set the row's **סטטוס** dropdown to **מאושר**. The site shows it within about 5 minutes. The script fills in the **אושר** time itself.
+- **Reject:** **נדחה**. **Take down later:** **הוסתר**. Rows are never deleted.
+- **Near-duplicate:** the **דומה ל…** column shows the closest existing tip. Set **סטטוס** to **מוזג** and type that tip's number in **מוזג לטיפ**. The script adds the text as a comment on that tip, so nothing is lost.
+- **Fix a typo or category:** just edit the cell. Categories are a dropdown.
+- **Email alerts:** **מארגנים → הפעלת התראות**, once. Google then asks for the email and trigger permissions. Every 2 hours the script checks, and if something *new* arrived it sends you one email listing everything waiting. If nothing new arrived, there's no email, so an item you leave waiting on purpose doesn't nag you.
+- **Limits:** a title of up to 60 characters, a tip of up to 400, a comment of up to 300. When 200 items are waiting, new submissions are refused until you clear some.

@@ -2,7 +2,7 @@
 
 > **Open questions for Yair:** none. Q1 and Q2 were answered 30/09/2026; the answers are in §4 and §5.
 
-**Status:** designed and decided 30/09/2026. **Ready to build** — next: first unticked box in §6.1. Not live yet.
+**Status:** designed and decided 30/09/2026. **Building** — §6.1 backend done; next: first unticked box in §6.2. Not live yet.
 
 ## 1. What it is
 
@@ -57,21 +57,28 @@ Same Google Sheet and Apps Script as registration. Two new tabs in the registrat
 <Yair: the script emails when something is waiting for approval - a 2 hour digest. give permission>
 **Decided:** a time trigger runs every 2 hours. If anything is waiting (tips or comments, and later activities if they ever need approval), it sends one email to the sheet owner listing the waiting items, with a link to the sheet. Nothing waiting means no email. The trigger is installed from the sheet menu (**מארגנים → הפעלת התראות**), which is also where Google asks for the Gmail and trigger permissions.
 
-## 6. Tasks (not started)
+## 6. Tasks
 
 #### 6.1 Backend
-- [ ] `טיפים` / `תגובות` tabs with status dropdowns, created by the script on first use
-- [ ] Actions: `tips` (approved tips + approved comments, cached), `submitTip`, `submitComment`
-  - length limits, bot trap field, pending cap, client id for safe retries
-- [ ] "דומה ל…" column filled on each pending tip
-- [ ] Merge: a `מוזג` status with a target id turns the tip into a comment on that tip
-- [ ] 2-hour digest email: time trigger + menu item that installs it (Gmail + trigger permissions)
-- [ ] Tests in `tests/backend.test.js`
-- [ ] Gate: `node tests/backend.test.js` green, `python backend/build.py --check` clean
+- [x] `טיפים` / `תגובות` tabs with status dropdowns, created by the script on first use
+  - also a category dropdown. Tip numbers are 1, 2, 3… assigned by the script. The browser's random id goes in "מזהה שליחה", so a retry finds its own row.
+- [x] Actions: `tips` (approved tips + approved comments, cached), `submitTip`, `submitComment`
+  - length limits, bot trap field (`hp`), pending cap (200, tips + comments), client id for safe retries
+  - `tips` is cached for 5 minutes and cleared on every hand edit of either tab (`onEdit`). Only id, category, title, text, author and comments leave the sheet.
+  - too long is an error (`too_long`), never a silent cut
+- [x] "דומה ל…" column filled on each pending tip
+  - the matching code lives once, in `search.js`. The site loads it, and `build.py` inlines it into `Code.gs` at `//@include search.js`
+- [x] Merge: a `מוזג` status with a target id turns the tip into a comment on that tip
+  - runs from `onEdit` and from each digest run. It needs the target to be approved, and a comment id `merge-<n>` makes it happen only once. "מוזג לטיפ" accepts `12` or `טיפ 12`.
+- [x] 2-hour digest email: time trigger + menu item that installs it (Gmail + trigger permissions)
+  - `MailApp` to the script owner. **Decided (Claude, 30/09):** it emails only when something *new* arrived since the last email, and lists everything waiting. Otherwise an item left waiting on purpose would re-send every 2 hours, through the night.
+- [x] Tests in `tests/backend.test.js`
+- [x] Gate: `node tests/backend.test.js` green, `python backend/build.py --check` clean
 
 #### 6.2 Site
 - [ ] Tab **טיפים**: category filter, search box, tip cards with collapsed comments
-- [ ] Hebrew normaliser (final letters, niqqud, one-letter prefixes) + tests
+- [x] Hebrew normaliser (final letters, niqqud, one-letter prefixes) + tests
+  - done with §6.1, in `search.js` and tested in `tests/backend.test.js`. A second prefix is stripped only after ו/ש, or when it is ה (והאוהל, מהחוף), so בלילה keeps its ל. Stop words go through the same normaliser.
 - [ ] Write-a-tip form with a live "similar tips" panel
 - [ ] Comment form under each tip; "ממתין לאישור" shown from this browser's own submissions
 - [ ] Gate: `node tests/calc.test.js` + a headless browser run of submit → approve in sheet → visible
