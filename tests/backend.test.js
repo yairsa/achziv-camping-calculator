@@ -265,6 +265,9 @@ console.log('tips tests passed');
   assert.strictEqual(seed.length, ctx.GEAR_SEED_.length);
   assert.ok(seed.every((r, i) => r[0] === i + 1 && r.length === ctx.GEAR_HEAD.length));
   assert.ok(seed.every(r => ctx.GEAR_SECTIONS_.includes(r[2])), 'every seed item has a known section');
+  // append-only: the site went live with ids 1-101, and visitors' ticks are stored by id
+  assert.deepStrictEqual([seed[0][3], seed[100][3]], ['אוהל', 'ספר'], 'starter items were inserted or removed, not appended');
+  assert.strictEqual(new Set(seed.map(r => r[3])).size, seed.length, 'duplicate item names');
   const gs = gearStore(true), G = (req) => P(ctx.route(req, null, gs));
   assert.strictEqual(ctx.housekeep_(gs).stamped, 0);
 

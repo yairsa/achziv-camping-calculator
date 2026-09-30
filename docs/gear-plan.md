@@ -73,6 +73,11 @@ A fifth tab, **ציוד**, with two views:
 - [x] Gate: `node tests/gear.e2e.js` (headless Chrome, 360px, mocked backend) + all other gates
   - mutation-checked: disabling the merge, or packed-to-bottom, turns it red.
 
+#### 5.2b Expanded starter list
+- [x] Yair, 30/09/2026: *"Lets expand ציוד list. Use [his Google Doc 'רשימת קמפינג'] as reference. Make specific items (like תרופה ספציפית) to general (תרופות)"*
+  - 101 → 117 items. Specific items made general in place (תרופות, ציוד רפואי אישי, הלבשה תחתונה…); new items appended as ids 102-117, because ids 1-101 were already live and ticks are stored by id. A backend test pins id 101 = ספר.
+  - left out on purpose: **כבל מאריך / מפצל** (the park forbids extension cables and there is no electricity); specific foods (אבוקדו, טופו, בירה…) became food groups.
+
 #### 5.3 Go-live
 - [ ] Yair pastes the new `Code.gs` and deploys a new version (same URL). Until then the site uses the starter list, and suggestions wait in the outbox.
 - [ ] Live check: the `gear` action answers with the seeded list
