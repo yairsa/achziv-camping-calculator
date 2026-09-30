@@ -364,11 +364,23 @@
     network: 'אין חיבור לשרת כרגע. נסו שוב בעוד רגע.'
   };
   var USER_KEY = 'achziv-user';
-  function api(body) {
+  // Google's web-app reply step fails intermittently (measured 30/09/2026: ~1 in 3 requests got a 404
+  // page after the script had already run). Every action is safe to repeat, so retry until a JSON reply.
+  function api(body, attempt) {
+    attempt = attempt || 1;
     return fetch(C.apiUrl, { method: body ? 'POST' : 'GET', headers: body ? { 'Content-Type': 'text/plain;charset=utf-8' } : undefined,
                              body: body ? JSON.stringify(body) : undefined })
       .then(function (r) { return r.json(); })
-      .catch(function () { return { ok: false, error: 'network' }; });
+      .catch(function () {
+        if (attempt >= 4) return { ok: false, error: 'network' };
+        return new Promise(function (res) { setTimeout(res, 400 * attempt); })
+          .then(function () { return api(body, attempt + 1); })
+          .then(function (res) {
+            // the first try may have deleted it and only the reply was lost
+            if (body && body.action === 'delete' && res.error === 'not_found') return { ok: true, summary: null };
+            return res;
+          });
+      });
   }
   function regMsg(text, kind) {
     var m = document.getElementById('reg-msg');
@@ -448,7 +460,7 @@
         busy(false);
         if (!res.ok) return fail(res);
         regMsg('ההרשמה בוטלה.', 'good');
-        renderGroup(res.summary);
+        if (res.summary) renderGroup(res.summary); else api(null).then(renderGroup);
       });
     });
 

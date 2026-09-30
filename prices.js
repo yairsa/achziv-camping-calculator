@@ -8,7 +8,7 @@ window.CAMP = {
 
   // Registration backend (Google Apps Script web-app URL, see backend/SETUP.md).
   // Empty = registration switched off; the calculator still works.
-  apiUrl: '',
+  apiUrl: 'https://script.google.com/macros/s/AKfycbwExRfGBKQl0Yvf5d0LG2aJiqkKxGbok4EJAiyW6vt6rsWLl0UigB-HLCrsnFrB0hMEwA/exec',
 
   // Stay defaults (ISO dates; displayed day-first).
   defaultFrom: '2026-10-06',
