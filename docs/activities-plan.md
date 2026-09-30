@@ -2,7 +2,7 @@
 
 > **Open questions for Yair:** none yet. The decisions below were derived from the brief (30/09/2026). Say if any is wrong.
 
-**Status:** designed 30/09/2026. **Not built.** Build **after** the tips tab (`docs/tips-plan.md`), because both change the same files (`Code.source.gs`, `app.js`, `index.html`). Next: first unticked box in §5.1.
+**Status:** designed 30/09/2026. **Not built — next to build** (Yair, 30/09/2026: *"Handoff and continue"*). Tips (live) and equipment (built, awaiting deploy) are done, so it no longer waits on them. Follow `gear.js` / `tips.js` for the outbox + cache pattern, and the repo `CLAUDE.md` gates, including `tools/stamp.py`. Next: first unticked box in §5.1.
 
 ## 1. The brief (Yair, 30/09/2026)
 
