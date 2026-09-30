@@ -41,6 +41,7 @@ let ts = store(), oldBackend = false, dropNext = 0, delay = 0, calls = [];
   const url = 'file:///' + path.resolve(__dirname, '../index.html').replace(/\\/g, '/');
   const text = (sel) => page.locator(sel).innerText();
   const noHScroll = async (where) => assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'horizontal scroll: ' + where);
+  const top = (sel) => page.evaluate((s) => document.querySelector(s).getBoundingClientRect().top, sel);
   const mineKeys = () => page.locator('#gear-mine-list li').evaluateAll(ls => ls.map(l => l.getAttribute('data-key')));
 
   // ---- prefetched in the background; the tab bar fits at 360px ----
@@ -81,9 +82,24 @@ let ts = store(), oldBackend = false, dropNext = 0, delay = 0, calls = [];
   await page.uncheck('#gp-g6');
   assert.strictEqual(await text('#gear-view-mine'), 'הרשימה שלי (' + basic + ')');
 
+  // ---- the view toggle and the filters stay on top while scrolling ----
+  for (const sec of ['ביגוד', 'אוכל ובישול', 'ים וחוף']) await page.click('#gear-pick-list .gsec[data-sec="' + sec + '"] summary');
+  await page.mouse.wheel(0, 2500); await page.waitForTimeout(200);
+  const tabsH = await page.evaluate(() => document.querySelector('.tabs').offsetHeight);
+  assert.ok(await page.evaluate(() => window.scrollY) > 600, 'the list is too short to test scrolling');
+  assert.ok(Math.abs(await top('#gear-bar') - tabsH) <= 1, 'the gear bar scrolled away');
+  assert.ok(await page.isVisible('#gear-q') && await page.isVisible('.chip[data-tag="ילדים"]'));
+  await noHScroll('gear bar');
+  await page.fill('#gear-q', 'פנס');                             // from deep in the list: results come into view
+  const [barB, listT] = await page.evaluate(() => [document.getElementById('gear-bar').getBoundingClientRect().bottom,
+                                                   document.getElementById('gear-pick').getBoundingClientRect().top]);
+  assert.ok(listT >= barB - 1 && listT < barB + 40, 'search results out of view: list top ' + listT + ', bar bottom ' + barB);
+  await page.fill('#gear-q', '');
+
   // ---- pack: the item moves to the bottom of its section ----
   await page.click('#gear-view-mine');
   assert.ok(await page.isVisible('#gear-mine-list'));
+  assert.ok(await page.isHidden('#gear-filters') && await page.isVisible('#gear-view-pick'), 'filters belong to the picking view only');
   assert.strictEqual(await text('#gear-progress-text'), 'ארוזים 0 מתוך ' + basic);
   let keys = await mineKeys();
   assert.strictEqual(keys[0], 'g1');

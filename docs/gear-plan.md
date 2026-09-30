@@ -68,6 +68,8 @@ A fifth tab, **ציוד**, with two views:
 - [x] Yair, 30/09/2026: *"List should start collapsed. Allow clear selections in general list, same as clear packed"*
   - the general list opens folded; a section opened by hand stays open through redraws; a search or tag opens every section with a match. "הרשימה שלי" stays open (it is the packing view).
   - "ניקוי כל הבחירות" (with a confirm) clears every pick and its packed mark; own items stay (they have their own "הסרה").
+- [x] Yair, 30/09/2026: *"In ציוד, keep list toggle and filters fix on top"*
+  - one bar fixed under the tab row: the toggle, plus search + tags in the picking view (only the toggle in "הרשימה שלי"). The search label is screen-reader only, to keep the bar ~150px at 360px. A search typed from deep in the list scrolls the results up to just under the bar.
 - [x] Gate: `node tests/gear.e2e.js` (headless Chrome, 360px, mocked backend) + all other gates
   - mutation-checked: disabling the merge, or packed-to-bottom, turns it red.
 

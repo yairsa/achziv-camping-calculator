@@ -183,6 +183,7 @@
     $('gear-view-mine').setAttribute('aria-pressed', v === 'mine');
     $('gear-pick').hidden = v !== 'pick';
     $('gear-mine').hidden = v !== 'mine';
+    $('gear-filters').hidden = v !== 'pick';
     render();
   }
 
@@ -202,6 +203,13 @@
     $('gear-new-sec').value = v;
   }
 
+  // The search sits in the fixed bar, so it can be used from deep in the list. When the results are
+  // shorter than the scroll position, bring their top back to just under the bar.
+  function toListTop() {
+    var bar = $('gear-bar').getBoundingClientRect(), list = $('gear-pick').getBoundingClientRect();
+    if (list.top < bar.bottom) window.scrollBy(0, list.top - bar.bottom);
+  }
+
   // ---------- copy / share ----------
   function listText() {
     var s = state(), rows = myRows(s), out = ['רשימת ציוד — אכזיב אוקטובר 2026'];
@@ -219,13 +227,13 @@
     fillSections(); renderTags();
     $('gear-view-pick').addEventListener('click', function () { setView('pick'); });
     $('gear-view-mine').addEventListener('click', function () { setView('mine'); });
-    $('gear-q').addEventListener('input', renderPick);
+    $('gear-q').addEventListener('input', function () { renderPick(); toListTop(); });
     $('gear-tags').addEventListener('click', function (e) {
       var b = e.target.closest && e.target.closest('[data-tag]');
       if (!b) return;
       var t = b.getAttribute('data-tag');
       tag = tag === t ? '' : t;
-      renderTags(); renderPick();
+      renderTags(); renderPick(); toListTop();
     });
     // remember what was opened by hand, so a redraw keeps it (not while a search opens everything)
     $('gear-pick-list').addEventListener('toggle', function (e) {

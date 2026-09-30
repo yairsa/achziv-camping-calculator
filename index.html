@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=118d2769">
+  <link rel="stylesheet" href="style.css?v=e5ce0bfe">
 </head>
 <body>
   <a class="skip" href="#main">דלג לתוכן</a>
@@ -263,19 +263,23 @@
       <div class="card">
         <h2>רשימת ציוד אישית</h2>
         <p class="hint">בחרו מה אתם לוקחים, ואז סמנו מה כבר ארוז. הרשימה נשמרת בדפדפן הזה בלבד — להעברה לטלפון אחר, שלחו אותה בוואטסאפ.</p>
+      </div>
+
+      <!-- fixed under the tab row: the view toggle, and in the picking view the search and tags -->
+      <div id="gear-bar" class="gbar">
         <div class="seg" role="group" aria-label="תצוגה">
           <button type="button" id="gear-view-pick" aria-pressed="true">בחירת פריטים</button>
           <button type="button" id="gear-view-mine" aria-pressed="false">הרשימה שלי (0)</button>
+        </div>
+        <div id="gear-filters">
+          <label for="gear-q" class="sr-only">חיפוש פריט</label>
+          <input id="gear-q" type="search" autocomplete="off" placeholder="חיפוש, למשל: פנס, צל, תינוק">
+          <div id="gear-tags" class="chips" role="group" aria-label="סינון לפי תגית"></div>
         </div>
       </div>
 
       <div id="gear-pick">
         <div class="card">
-          <div class="field">
-            <label for="gear-q">חיפוש</label>
-            <input id="gear-q" type="search" autocomplete="off" placeholder="למשל: פנס, צל, תינוק">
-          </div>
-          <div id="gear-tags" class="chips" role="group" aria-label="סינון לפי תגית"></div>
           <button type="button" id="gear-basic" class="btn-secondary">+ הוספת כל הפריטים הבסיסיים</button>
           <button type="button" id="gear-clear" class="btn-link">ניקוי כל הבחירות</button>
           <p id="gear-pick-msg" class="msg" role="status" aria-live="polite"></p>
@@ -330,6 +334,6 @@
   <script src="search.js?v=31352673"></script>
   <script src="tips.js?v=34713f3a"></script>
   <script src="gear-seed.js?v=97bfecc7"></script>
-  <script src="gear.js?v=260fa6a2"></script>
+  <script src="gear.js?v=e70f5314"></script>
 </body>
 </html>

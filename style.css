@@ -241,7 +241,14 @@ a.btn-secondary { display: inline-block; text-decoration: none; border-style: so
 }
 #panel-gear .msg:empty { display: none; }
 #gear-pick[hidden], #gear-mine[hidden], #gear-progress[hidden], #gear-mine-tools[hidden], #gear-mine-empty[hidden] { display: none; }
-.seg { display: flex; gap: 0; border: 1px solid var(--accent); border-radius: 8px; overflow: hidden; margin-top: 10px; }
+.gbar { position: sticky; top: var(--tabs-h, 48px); z-index: 4; background: var(--bg); padding: 8px 0; margin-bottom: 8px; }
+#gear-filters[hidden] { display: none; }
+#gear-q { display: block; width: 100%; font: inherit; color: var(--text); background: var(--card);
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-top: 8px; }
+#gear-filters .chips { margin: 8px 0 0; }
+#panel-gear .card, #panel-gear [id] { scroll-margin-top: calc(var(--tabs-h, 48px) + 170px); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.seg { display: flex; gap: 0; border: 1px solid var(--accent); border-radius: 8px; overflow: hidden; }
 .seg button { flex: 1; font: inherit; font-weight: 600; background: var(--card); color: var(--accent); border: 0; padding: 10px 8px; cursor: pointer; }
 .seg button[aria-pressed="true"] { background: var(--accent); color: var(--card); }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
