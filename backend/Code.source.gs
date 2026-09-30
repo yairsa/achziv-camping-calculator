@@ -763,7 +763,6 @@ function saveActivity_(req, store, as) {
     row = findAct_(as, req.id);
     if (!row || row.status !== AST.active) fail_('not_found');
     if (!isOwner_(row, fam)) fail_('not_owner');
-    if (f.capacity && actTaken_(as, +row.id) > f.capacity) fail_('below_joined');
     Object.keys(f).forEach(function (k) { row[k] = f[k]; });
     row.updated = as.now();
     as.updateAct(row);
@@ -797,8 +796,7 @@ function join_(req, store, as) {
   var n = Number(req.count);
   if (!(n >= 1 && n <= ACT_LIMITS.join) || n !== Math.floor(n)) fail_('bad_count');
   var id = +row.id, mine = as.joins().filter(function (j) { return +j.actId === id && normUser_(unguard_(j.family)) === fam.key; })[0];
-  var others = actTaken_(as, id) - (mine ? Math.max(0, Math.floor(+mine.count) || 0) : 0);
-  if (+row.capacity && others + n > +row.capacity) fail_('full');
+  // places are information only (activities-plan §6): a join over the number is never refused
   if (mine) { mine.count = n; mine.updated = as.now(); as.updateJoin(mine); }
   else as.addJoin({ actId: id, family: safeCell_(fam.name), count: n, updated: as.now() });
   return actDone_(as);

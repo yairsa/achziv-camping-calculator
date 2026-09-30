@@ -116,14 +116,16 @@ The organizers' sheet gets an **פעילויות** tab (topic, time, owner, join
 ### Tasks
 
 #### 6.1 Places advisory
-- [ ] Backend: `join_` never answers `full`; `saveActivity` never answers `below_joined`; tests updated (a join over the number succeeds; an edit below who joined succeeds); `python backend/build.py`
-- [ ] Site: `placesText` at/over the number; no `.full` dimming; no "הפעילות מלאה" block; the count input's max no longer tied to free places; no `below_joined` check in the form; the form label says it does not limit; `full` message reworded for the old backend
-- [ ] `activities.e2e.js`: joining a full activity works and shows the over text
+- [x] Backend: `join_` never answers `full`; `saveActivity` never answers `below_joined`; tests updated (a join over the number succeeds; an edit below who joined succeeds); `python backend/build.py`
+- [x] Site: `placesText` at/over the number; no `.full` dimming; no "הפעילות מלאה" block; the count input's max no longer tied to free places; no `below_joined` check in the form; the form label says it does not limit; `full` message reworded for the old backend
+- [x] `activities.e2e.js`: joining a full activity works and shows the over text
 
 #### 6.2 הרשימה שלי
-- [ ] Toggle button + view: joined and own activities by day; count in the label; filters hidden; the two empty states
-- [ ] Tour text for the פעילויות toggle; old text retired
-- [ ] `activities.e2e.js`: the list holds exactly the joined/own ones, the count, both empty states, 360px no sideways scroll
+- [x] Toggle button + view: joined and own activities by day; count in the label; filters hidden; the two empty states
+  - the three buttons size to their labels in `#acts-bar` (`flex: 1 1 auto`, nowrap): at equal widths "הרשימה שלי (2)" wrapped at 360px; the e2e checks they stay on one line
+  - re-rendered on `tabshown`, so a family that registers in מחשבון לינה sees its list on coming back
+- [x] Tour text for the פעילויות toggle; old text retired
+- [x] `activities.e2e.js`: the list holds exactly the joined/own ones, the count, both empty states, 360px no sideways scroll
 
 #### 6.3 Gate and go-live
 - [ ] All 9 gates green; push; live check

@@ -1,5 +1,5 @@
 // Run: node tests/activities.e2e.js — the activities tab in headless Chrome at 360px, against backend/Code.gs running in
-// Node's vm (the Google URL is mocked, so nothing reaches the live sheet). Add → join → full → leave → edit → cancel,
+// Node's vm (the Google URL is mocked, so nothing reaches the live sheet). Add → join → past the number of places (advisory) → leave → edit → cancel, הרשימה שלי,
 // the calendar, the filters, a dropped reply, a wrong code, the cached copy and the old live script.
 // Needs playwright-core (PLAYWRIGHT_CORE=<path>, default: the website repo's copy) and installed Chrome (CHROME=<path>).
 const assert = require('assert'), fs = require('fs'), vm = require('vm'), path = require('path'), crypto = require('crypto');
@@ -100,7 +100,7 @@ let oldBackend = false, dropNext = 0, delay = 0, calls = [];
   assert.ok(await page.isHidden('#act-user'), 'the accepted code is not asked again');
   await noHScroll('details');
 
-  // ---- join: 3, then change to 5 (sets, not adds) -> full ----
+  // ---- join: 3, then change to 5 (sets, not adds): the places are taken, joining stays open ----
   await page.fill('#act-count', '3');
   await page.click('#act-join');
   await waitMsg(/הצטרפתם/);
@@ -109,20 +109,27 @@ let oldBackend = false, dropNext = 0, delay = 0, calls = [];
   await page.click('#act-join');
   await waitMsg(/הצטרפתם/);
   assert.strictEqual(joins.filter(j => j.count > 0).length, 1);
-  assert.ok((await text('#act-places')).startsWith('מלא (5 מתוך 5)'), await text('#act-places'));
+  assert.ok((await text('#act-places')).startsWith('5 מתוך 5 מקומות, אפשר עדיין להצטרף'), await text('#act-places'));
   await page.click('#act-dlg-close');
   assert.ok(await page.isHidden('#act-dlg'));
-  assert.ok((await text('#acts-list')).includes('הצטרפתם (5)') && (await text('#acts-list')).includes('מלא'));
+  assert.ok((await text('#acts-list')).includes('הצטרפתם (5)') && (await text('#acts-list')).includes('אפשר עדיין להצטרף'));
 
-  // ---- another family: full, so it cannot join; it has no edit buttons ----
+  // ---- another family: the places are taken and it still joins (advisory, activities-plan §6); no edit buttons ----
   await page.evaluate(() => { localStorage.setItem('achziv-registered', 'Levi'); });
   await page.reload();
   await page.click('#tab-acts');
   await page.click('.arow[data-id="1"]');
-  assert.ok((await text('#act-dlg-body')).includes('הפעילות מלאה'));
-  assert.strictEqual(await page.locator('#act-join').count(), 0);
+  assert.ok(!(await text('#act-dlg-body')).includes('מלאה'));
   assert.ok(await page.isHidden('#act-edit'));
   assert.strictEqual(await page.inputValue('#act-user'), 'Levi', 'the name this device registered with is filled in');
+  await page.fill('#act-pin', '5555');
+  await page.fill('#act-count', '2');
+  await page.click('#act-join');
+  await waitMsg(/הצטרפתם/);
+  assert.ok((await text('#act-places')).startsWith('7 מתוך 5 מקומות, אפשר עדיין להצטרף'), await text('#act-places'));
+  await page.click('#act-leave');
+  await waitMsg(/יצאתם/);
+  await page.click('#act-switch');
 
   // ---- the owner leaves: a place opens and Levi joins ----
   await page.fill('#act-user', 'משפחת כהן');
@@ -145,7 +152,7 @@ let oldBackend = false, dropNext = 0, delay = 0, calls = [];
   await waitMsg(/הצטרפתם/);
   assert.ok((await text('#act-dlg-body')).includes('Levi (4)'));
 
-  // ---- edit (owner only): capacity below who joined is refused, then a real edit ----
+  // ---- edit (owner only): fewer places than who joined is fine (advisory), then a real edit ----
   await page.click('#act-switch');
   await page.fill('#act-user', 'משפחת כהן'); await page.fill('#act-pin', '1234');
   await page.fill('#act-count', '1');
@@ -156,7 +163,9 @@ let oldBackend = false, dropNext = 0, delay = 0, calls = [];
   assert.strictEqual(await page.inputValue('#af-end-h'), '12');
   await page.fill('#af-cap', '3');
   await page.click('#af-save');
-  assert.ok((await msg()).includes('כבר הצטרפו יותר'), await msg());
+  await waitMsg(/השינויים נשמרו/);
+  assert.ok((await text('#act-places')).startsWith('5 מתוך 3 מקומות'), await text('#act-places'));
+  await page.click('#act-edit');
   await page.fill('#af-cap', '8');
   await page.fill('#af-topic', 'סדנת עפיפונים ענקיים');
   await page.fill('#af-host', 'דנה מהאוהל הכחול');                            // optional host
@@ -194,6 +203,21 @@ let oldBackend = false, dropNext = 0, delay = 0, calls = [];
   await page.fill('#acts-q', '');
   assert.notStrictEqual(await bg('.arow[data-id="1"]'), await bg('.arow[data-id="2"]'), 'list rows share a colour');
   await noHScroll('list');
+
+  // ---- הרשימה שלי: what this family joined or organizes; the filters hide ----
+  await page.fill('#acts-q', 'שירה');                                          // a filter does not narrow it
+  await page.click('#acts-view-mine');
+  assert.strictEqual(await text('#acts-view-mine'), 'הרשימה שלי (2)');
+  assert.ok(await page.isHidden('#acts-q') && await page.isHidden('#acts-days') && await page.isHidden('#acts-tags'), 'filters in הרשימה שלי');
+  assert.strictEqual(await page.locator('.arow').count(), 2);
+  assert.strictEqual(await text('#acts-count'), '2 פעילויות ברשימה שלכם.');
+  assert.ok((await text('.arow[data-id="1"]')).includes('הצטרפתם (1)') && (await text('.arow[data-id="2"]')).includes('שלכם'));
+  await noHScroll('mine');
+  { const seg = await page.evaluate(() => [...document.querySelectorAll('#acts-bar .seg button')].map(b => b.getBoundingClientRect().height));
+    assert.ok(seg.every(h => h === seg[0]) && seg[0] < 50, 'the three view buttons do not fit on one line: ' + seg); }
+  await page.click('#acts-view-list');
+  await page.fill('#acts-q', '');
+  assert.ok(await page.isVisible('#acts-q'));
 
   // ---- calendar: only days and hours that have something; blocks open the details ----
   await page.click('#acts-view-cal');
@@ -265,6 +289,17 @@ let oldBackend = false, dropNext = 0, delay = 0, calls = [];
   assert.strictEqual(await page.inputValue('#act-user'), 'Levi');
   assert.strictEqual(await page.inputValue('#act-pin'), '5555');
   await page.click('#act-dlg-close');
+  // Levi's list: its activity was cancelled and it joins nothing now
+  await page.click('#acts-view-mine');
+  assert.strictEqual(await text('#acts-count'), 'עוד לא הצטרפתם לפעילות. פתחו פעילות ולחצו הצטרפות.');
+  assert.strictEqual(await text('#acts-view-mine'), 'הרשימה שלי');
+  assert.strictEqual(await page.locator('.arow').count(), 0);
+  // a device that knows no family
+  await page.evaluate(() => localStorage.removeItem('achziv-registered'));
+  await page.reload();
+  await page.click('#tab-acts');
+  await page.click('#acts-view-mine');
+  assert.ok((await text('#acts-count')).startsWith('כדי לראות כאן את הפעילויות שלכם'), await text('#acts-count'));
 
   // ---- the preview link ?demo#acts: the example activities, never sent or saved ----
   calls = [];

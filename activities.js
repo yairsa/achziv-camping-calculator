@@ -18,15 +18,16 @@
   var WD = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
   var HOUR_PX = 48, GAP_PX = 14, PHONE_DAYS = 3;
   var ERR = {
-    not_registered: 'לא מצאנו הרשמה בשם הזה. רק משפחות רשומות יכולות להוסיף פעילות או להצטרף. נרשמים בלשונית "מחשבון".',
+    not_registered: 'לא מצאנו הרשמה בשם הזה. רק משפחות רשומות יכולות להוסיף פעילות או להצטרף. נרשמים בלשונית "מחשבון לינה".',
     wrong_pin: 'הקוד לא תואם את ההרשמה בשם הזה.',
     locked: 'יותר מדי ניסיונות עם קוד שגוי. ההרשמה נעולה ל-15 דקות. נסו שוב אחר כך, או פנו למארגנים.',
     bad_user: 'כתבו את שם המשפחה כפי שנרשמתם.',
     bad_pin: 'הקוד הוא 4 עד 8 ספרות.',
     not_owner: 'רק המשפחה שיצרה את הפעילות יכולה לערוך או לבטל אותה.',
     not_found: 'הפעילות הזאת כבר לא קיימת. אולי היא בוטלה.',
-    full: 'אין מספיק מקומות פנויים. נסו מספר משתתפים קטן יותר.',
-    below_joined: 'כבר הצטרפו יותר אנשים ממספר המקומות הזה.',
+    // the old script still limits by the number of places; the new one never answers these (activities-plan §6)
+    full: 'השרת עוד לא עודכן, ועדיין מגביל לפי מספר המקומות. נסו מספר משתתפים קטן יותר, או נסו שוב מאוחר יותר.',
+    below_joined: 'השרת עוד לא עודכן, ועדיין לא מאפשר מספר מקומות קטן ממספר המצטרפים. נסו שוב מאוחר יותר.',
     bad_time: 'בחרו מועד בתוך ימי הטיול, 06/10 עד 13/10.',
     end_before_start: 'הסיום צריך להיות אחרי ההתחלה.',
     bad_tag: 'בחרו למי הפעילות מתאימה.',
@@ -94,11 +95,10 @@
   }
   function placesText(a) {
     if (!a.capacity) return a.taken ? a.taken + ' משתתפים, אין הגבלת מקומות' : 'אין הגבלת מקומות';
-    if (a.taken >= a.capacity) return 'מלא (' + a.taken + ' מתוך ' + a.capacity + ')';
+    if (a.taken >= a.capacity) return a.taken + ' מתוך ' + a.capacity + ' מקומות, אפשר עדיין להצטרף';   // advisory only
     var left = a.capacity - a.taken;
     return (left === 1 ? 'נשאר מקום אחד' : 'נשארו ' + left + ' מקומות') + ' (' + a.taken + ' מתוך ' + a.capacity + ')';
   }
-  function isFull(a) { return !!a.capacity && a.taken >= a.capacity; }
 
   // ---------- filters ----------
   function matches(a, words) {
@@ -115,7 +115,7 @@
   // ---------- list by day ----------
   function row(a, d) {
     var j = myJoin(a);
-    return '<li><button type="button" class="arow' + tc(a.tag) + (isFull(a) ? ' full' : '') + '" data-id="' + a.id + '">' +
+    return '<li><button type="button" class="arow' + tc(a.tag) + '" data-id="' + a.id + '">' +
       '<span class="atime">' + esc(timeOnDay(a, d)) + '</span>' +
       '<span class="atopic">' + esc(a.topic) + '</span>' +
       '<span class="ameta"><span class="atag">' + esc(tagText(a)) + '</span> · ' + esc(placesText(a)) +
@@ -124,11 +124,11 @@
       (isMine(a.owner) ? ' · <strong class="amine">שלכם</strong>' : '') + '</span>' +
       '</button></li>';
   }
-  function renderList(list) {
-    var html = '';
-    (day ? [day] : tripDays()).forEach(function (d) {
+  function renderList(list, allDays) {
+    var html = '', dy = allDays ? '' : day;
+    (dy ? [dy] : tripDays()).forEach(function (d) {
       // no day chosen: each activity under its first day; a day chosen: everything happening on it
-      var here = list.filter(function (a) { return day ? onDay(a, d) : a.start.slice(0, 10) === d; });
+      var here = list.filter(function (a) { return dy ? onDay(a, d) : a.start.slice(0, 10) === d; });
       if (!here.length) return;
       html += '<div class="card aday"><h3>' + esc(dayLabel(d)) + '</h3><ul class="alist">' +
         here.map(function (a) { return row(a, d); }).join('') + '</ul></div>';
@@ -204,7 +204,7 @@
       cols.map(function (segs) {
         return '<div class="calday" style="height:' + h + 'px">' + lines + segs.map(function (g) {
           var w = 100 / g.lanes, top = hr.at(g.s);
-          return '<button type="button" class="ablock' + tc(g.a.tag) + (isFull(g.a) ? ' full' : '') + (myJoin(g.a) || isMine(g.a.owner) ? ' mine' : '') + '" data-id="' + g.a.id + '" ' +
+          return '<button type="button" class="ablock' + tc(g.a.tag) + (myJoin(g.a) || isMine(g.a.owner) ? ' mine' : '') + '" data-id="' + g.a.id + '" ' +
             'style="top:' + top + 'px;height:' + (hr.at(g.e) - top - 2) + 'px;' +
             'inset-inline-start:' + (g.lane * w) + '%;width:calc(' + w + '% - 2px)">' +
             '<span class="btime">' + (g.cont ? 'עד ' + esc(hm(g.a.end)) : esc(hm(g.a.start))) + '</span>' + esc(g.a.topic) + '</button>';
@@ -221,21 +221,36 @@
       return '<button type="button" class="chip' + tc(t) + '" aria-pressed="' + (t === tag) + '" data-tag="' + esc(t) + '">' + (t ? esc(t) : 'כל הקהלים') + '</button>';
     }).join('');
   }
+  // הרשימה שלי (activities-plan §6.2): what this family joined or organizes. The family is the one this device
+  // knows (signed in this visit, or the name it last registered with); nothing new is stored.
+  function mineList() { return acts.filter(function (a) { return myJoin(a) || isMine(a.owner); }); }
+  function renderMine() {
+    var list = mineList();
+    $('acts-count').textContent = !myName() ? 'כדי לראות כאן את הפעילויות שלכם, היכנסו עם שם המשפחה והקוד (בלשונית מחשבון לינה).'
+      : !list.length ? 'עוד לא הצטרפתם לפעילות. פתחו פעילות ולחצו הצטרפות.'
+      : list.length === 1 ? 'פעילות אחת ברשימה שלכם.' : list.length + ' פעילויות ברשימה שלכם.';
+    renderList(list, true);
+  }
   function render() {
+    var n = mineList().length;
+    $('acts-view-mine').textContent = 'הרשימה שלי' + (n ? ' (' + n + ')' : '');
+    ['acts-q', 'acts-days', 'acts-tags'].forEach(function (id) { $(id).hidden = view === 'mine'; });
+    $('acts-list').hidden = view === 'cal';
+    $('acts-cal').hidden = view !== 'cal';
+    if (view === 'mine') { renderMine(); return; }
     var list = shown(), filtering = list.length !== acts.length || !!day;
     $('acts-count').textContent = !acts.length ? (live ? 'עוד אין פעילויות. אפשר להוסיף את הראשונה.' : '')
       : !list.length ? 'לא נמצאו פעילויות. נסו מילה אחרת, או בטלו את הסינון.'
       : day && view === 'list' && !$('acts-q').value.trim() && !tag ? list.filter(function (a) { return onDay(a, day); }).length + ' פעילויות ב' + dayLabel(day) + '.'
       : filtering ? 'נמצאו ' + list.length + ' מתוך ' + acts.length + ' פעילויות.'
       : acts.length + ' פעילויות.';
-    $('acts-list').hidden = view !== 'list';
-    $('acts-cal').hidden = view !== 'cal';
     if (view === 'list') renderList(list); else renderCal(list);
   }
   function setView(v) {
     view = v;
     $('acts-view-list').setAttribute('aria-pressed', v === 'list');
     $('acts-view-cal').setAttribute('aria-pressed', v === 'cal');
+    $('acts-view-mine').setAttribute('aria-pressed', v === 'mine');
     render();
   }
   function toListTop() {
@@ -273,10 +288,9 @@
     var a = find(id);
     if (!a) { closeDlg(); return; }
     dlg = { mode: 'details', id: a.id };
-    var j = myJoin(a), full = isFull(a), owner = isMine(a.owner);
+    var j = myJoin(a), owner = isMine(a.owner);
     var joined = a.joined.length ? '<ul class="ajoined">' + a.joined.map(function (x) {
       return '<li>' + esc(x.family) + ' <small>(' + x.count + ')</small></li>'; }).join('') + '</ul>' : '<p class="hint">עוד אף אחד לא הצטרף.</p>';
-    var free = a.capacity ? a.capacity - a.taken + (j ? j.count : 0) : 30;
     $('act-dlg-body').innerHTML =
       '<h2 id="act-dlg-title">' + esc(a.topic) + '</h2>' +
       '<p class="awhen">' + esc(when(a)) + '</p>' +
@@ -287,9 +301,8 @@
       (a.suggested ? '<p><strong>מומלץ להביא:</strong> ' + esc(a.suggested) + '</p>' : '') +
       '<h3>מקומות</h3><p id="act-places">' + esc(placesText(a)) + '</p>' + joined +
       '<div class="aact">' + whoBlock('כדי להצטרף, שם המשפחה והקוד מההרשמה') +
-      (full && !j ? '<p class="hint">הפעילות מלאה.</p>' :
-        '<div class="ajoin"><label for="act-count">כמה משתתפים מהמשפחה</label>' +
-        '<input id="act-count" type="number" inputmode="numeric" min="1" max="' + Math.max(1, Math.min(30, free)) + '" value="' + (j ? j.count : 1) + '">' +
+      ('<div class="ajoin"><label for="act-count">כמה משתתפים מהמשפחה</label>' +
+        '<input id="act-count" type="number" inputmode="numeric" min="1" max="30" value="' + (j ? j.count : 1) + '">' +
         '<button type="button" id="act-join" class="btn-primary">' + (j ? 'עדכון מספר המשתתפים' : 'הצטרפות') + '</button></div>') +
       '<div class="actions">' +
       (j ? '<button type="button" id="act-leave" class="btn-secondary">יציאה מהפעילות</button>' : '') +
@@ -332,7 +345,7 @@
       '<div id="af-ages" class="fields"' + (t === 'ילדים' ? '' : ' hidden') + '>' +
       '<div class="field"><label for="af-from">מגיל (לא חובה)</label><input id="af-from" type="number" inputmode="numeric" min="0" max="99" value="' + (a && a.ageFrom != null ? a.ageFrom : '') + '"></div>' +
       '<div class="field"><label for="af-to">עד גיל (לא חובה)</label><input id="af-to" type="number" inputmode="numeric" min="0" max="99" value="' + (a && a.ageTo != null ? a.ageTo : '') + '"></div></div></fieldset>' +
-      '<div class="field"><label for="af-cap">מספר מקומות (ריק = אין הגבלה)</label><input id="af-cap" type="number" inputmode="numeric" min="1" max="500" value="' + (a && a.capacity ? a.capacity : '') + '"></div>' +
+      '<div class="field"><label for="af-cap">מספר מקומות (לידיעה בלבד, לא מגביל הצטרפות. ריק = אין הגבלה)</label><input id="af-cap" type="number" inputmode="numeric" min="1" max="500" value="' + (a && a.capacity ? a.capacity : '') + '"></div>' +
       '<div class="field"><label for="af-req">חובה להביא (לא חובה)</label><input id="af-req" type="text" maxlength="200" autocomplete="off" value="' + esc(a ? a.required : '') + '"></div>' +
       '<div class="field"><label for="af-sug">מומלץ להביא (לא חובה)</label><input id="af-sug" type="text" maxlength="200" autocomplete="off" value="' + esc(a ? a.suggested : '') + '"></div>' +
       '<div class="actions"><button type="submit" id="af-save" class="btn-primary">' + (a ? 'שמירת השינויים' : 'הוספת הפעילות') + '</button>' +
@@ -356,8 +369,6 @@
     if ((from != null && !(from >= 0 && from <= 99 && from % 1 === 0)) || (to != null && !(to >= 0 && to <= 99 && to % 1 === 0)) ||
         (from != null && to != null && from > to)) return ['bad_age', 'af-from'];
     if (f.capacity !== '' && !(+f.capacity >= 1 && +f.capacity <= 500 && +f.capacity % 1 === 0)) return ['bad_capacity', 'af-cap'];
-    var a = dlg.id ? find(dlg.id) : null;
-    if (a && f.capacity !== '' && +f.capacity < a.taken) return ['below_joined', 'af-cap'];
     return null;
   }
 
@@ -417,6 +428,7 @@
     renderChips();
     $('acts-view-list').addEventListener('click', function () { setView('list'); });
     $('acts-view-cal').addEventListener('click', function () { setView('cal'); });
+    $('acts-view-mine').addEventListener('click', function () { setView('mine'); });
     $('acts-q').addEventListener('input', function () { render(); toListTop(); });
     $('acts-days').addEventListener('click', function (e) {
       var b = e.target.closest && e.target.closest('[data-day]'); if (!b) return;
@@ -530,6 +542,8 @@
   $('acts-add').hidden = true;             // until the server says activities are open
   render();
   $('tab-acts').addEventListener('click', start);
+  // back on the tab after registering or signing in elsewhere: הרשימה שלי follows the family now known
+  document.addEventListener('tabshown', function () { if (started && !$('panel-acts').hidden) render(); });
   $('tab-acts').addEventListener('focus', start);
   if (!$('panel-acts').hidden) start();
   else if (window.requestIdleCallback) requestIdleCallback(start, { timeout: 2500 });

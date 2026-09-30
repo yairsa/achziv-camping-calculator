@@ -12,7 +12,8 @@ var TOUR_NAMES_ = { welcome: 'פתיחה', gear: 'ציוד', acts: 'פעילוי
 // Built-in texts that were replaced here after a sheet was created with them. A sheet cell still holding one was
 // never edited, so the script moves it to the current text. Key: tour/key.
 var TOUR_RETIRED_ = {
-  'welcome/share': ['מכירים עוד משפחות מהקבוצה? שלחו להן את האתר. הסיור הזה חוזר בכל זמן בכפתור ?.']
+  'welcome/share': ['מכירים עוד משפחות מהקבוצה? שלחו להן את האתר. הסיור הזה חוזר בכל זמן בכפתור ?.'],
+  'acts/views': ['פעילויות שמשפחות בקבוצה מתכננות. רואים אותן ברשימה לפי ימים, או בלוח שבועי.']
 };
 
 var TOUR_TEXTS_ = [
@@ -53,7 +54,7 @@ var TOUR_TEXTS_ = [
     text: 'הוסיפו אותו לרשימה שלכם. הוא יישלח גם למארגן, שיחליט אם להוסיף אותו לרשימה הכללית.' },
 
   { tour: 'acts', key: 'views', title: 'פעילויות',
-    text: 'פעילויות שמשפחות בקבוצה מתכננות. רואים אותן ברשימה לפי ימים, או בלוח שבועי.' },
+    text: 'פעילויות שמשפחות בקבוצה מתכננות. רואים אותן לפי ימים או בלוח שבועי. ב"הרשימה שלי" מופיעות רק הפעילויות שהצטרפתם אליהן או שאתם מארגנים.' },
   { tour: 'acts', key: 'search', title: 'חיפוש וסינון',
     text: 'חיפוש, וסינון לפי יום ולפי קהל: לכולם, למבוגרים או לילדים.' },
   { tour: 'acts', key: 'details', title: 'פרטים והצטרפות',

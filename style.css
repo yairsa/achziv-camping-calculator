@@ -289,11 +289,13 @@ a.btn-secondary { display: inline-block; text-decoration: none; border-style: so
 #gear-progress-bar { width: 100%; height: 12px; accent-color: var(--accent); margin-bottom: 10px; }
 
 /* activities */
-#panel-acts .msg:empty, #acts-add[hidden], #acts-list[hidden], #acts-cal[hidden] { display: none; }
+#panel-acts .msg:empty, #acts-add[hidden], #acts-list[hidden], #acts-cal[hidden], #acts-q[hidden], #acts-days[hidden], #acts-tags[hidden] { display: none; }
 #acts-add { margin-top: 8px; }
 #acts-q { display: block; width: 100%; font: inherit; color: var(--text); background: var(--card);
   border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-top: 8px; }
 #acts-bar .chips { margin: 8px 0 0; }
+/* three views: each button as wide as its label, so "הרשימה שלי (2)" stays on one line at 360px */
+#acts-bar .seg button { flex: 1 1 auto; padding-inline: 6px; white-space: nowrap; }
 .chips-row { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
 .chips-row .chip { white-space: nowrap; flex-shrink: 0; }
 @media (min-width: 701px) { .chips-row { flex-wrap: wrap; } }
@@ -309,7 +311,6 @@ a.btn-secondary { display: inline-block; text-decoration: none; border-style: so
 .ameta { font-size: .88rem; color: var(--muted); }
 .atag { font-weight: 600; color: var(--accent); }
 .amine { color: var(--accent); }
-.arow.full .ameta { color: var(--text); }
 .calnav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .calnav .btn-secondary { width: 48px; border-style: solid; font-size: 1.3rem; padding: 4px 0; }
 .calnav span { font-weight: 700; }
@@ -327,7 +328,6 @@ a.btn-secondary { display: inline-block; text-decoration: none; border-style: so
   color: var(--text); background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 6px;
   padding: 2px 4px; cursor: pointer; overflow-wrap: break-word; hyphens: auto; min-height: 20px; }
 .ablock.mine { border-width: 2px; }
-.ablock.full { border-style: dashed; }
 /* each audience its own colour: calendar blocks, list rows, the tag text and the filter chips */
 .t-all { --t-bg: var(--t-all-bg); --t-line: var(--t-all-line); --t-ink: var(--t-all-ink); }
 .t-adult { --t-bg: var(--t-adult-bg); --t-line: var(--t-adult-line); --t-ink: var(--t-adult-ink); }

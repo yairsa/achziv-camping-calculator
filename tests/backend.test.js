@@ -382,20 +382,21 @@ console.log('gear tests passed');
   assert.strictEqual(as.actsRows[1].topic, "'=cmd()"); assert.strictEqual(as.actsRows[1].owner, 'Levi');
   assert.deepStrictEqual(r.activities.map(a => a.id), [2, 1]);      // sorted by start
 
-  // join: sets (not adds), capacity is enforced, a full activity takes no more
+  // join: sets (not adds); places are advisory (activities-plan §6): a join over the number is never refused
   const J = (who, pin, count, id) => A({ action: 'join', user: who, pin, id: id || 1, count });
   assert.strictEqual(J('Levi', '5555', 0).error, 'bad_count');
   assert.strictEqual(J('Levi', '5555', 3).activities.find(a => a.id === 1).taken, 3);
   assert.strictEqual(J('levi', '5555', 3).activities.find(a => a.id === 1).taken, 3);   // a retry
   assert.strictEqual(as.joinRows.length, 1);
-  assert.strictEqual(J('Mizrahi', '7777', 3).error, 'full');
+  assert.strictEqual(J('Mizrahi', '7777', 3).activities.find(a => a.id === 1).taken, 6);   // 6 of 5 places: fine
   r = J('Mizrahi', '7777', 2);
   let one = r.activities.find(a => a.id === 1);
   assert.strictEqual(one.taken, 5); assert.deepStrictEqual(one.joined, [{ family: 'Levi', count: 3 }, { family: 'Mizrahi', count: 2 }]);
-  assert.strictEqual(J('משפחת כהן', '1234', 1).error, 'full');
+  assert.strictEqual(J('משפחת כהן', '1234', 1).activities.find(a => a.id === 1).taken, 6);
+  assert.ok(A({ action: 'leave', user: 'משפחת כהן', pin: '1234', id: 1 }).ok);
   assert.ok(J('Levi', '5555', 2).ok);                              // lowering your own count is always fine
-  assert.ok(J('Levi', '5555', 3).ok);                              // and back up to the limit
-  assert.strictEqual(J('Levi', '5555', 4).error, 'full');
+  assert.ok(J('Levi', '5555', 4).ok);                              // and up, past the number
+  assert.ok(J('Levi', '5555', 3).ok);
   assert.strictEqual(J('Levi', '5555', 1, 99).error, 'not_found');
 
   // leave (repeatable), then the place is free again
@@ -403,10 +404,10 @@ console.log('gear tests passed');
   assert.ok(A({ action: 'leave', user: 'Mizrahi', pin: '7777', id: 1 }).ok);
   assert.ok(J('משפחת כהן', '1234', 2).ok);
 
-  // edit: owner only; capacity cannot drop below who already joined
+  // edit: owner only; the number may drop below who already joined (advisory)
   const edit = (who, a, id) => A(Object.assign({ action: 'saveActivity', id: id || 1, activity: act(a) }, who));
   assert.strictEqual(edit({ user: 'Levi', pin: '5555' }, {}).error, 'not_owner');
-  assert.strictEqual(edit({ user: 'משפחת כהן', pin: '1234' }, { capacity: 4 }).error, 'below_joined');
+  assert.strictEqual(edit({ user: 'משפחת כהן', pin: '1234' }, { capacity: 4 }).activities.find(a => a.id === 1).capacity, 4);
   // the host (מנחה) is optional, one line, up to 60 characters
   assert.strictEqual(r.activities.find(a => a.id === 1).host, '');
   assert.strictEqual(edit({ user: 'משפחת כהן', pin: '1234' }, { host: 'א'.repeat(61) }).error, 'too_long');
