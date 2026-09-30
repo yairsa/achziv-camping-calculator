@@ -103,15 +103,64 @@
   }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
-  // ---------- counters ----------
+  // ---------- info bubbles: hover, keyboard focus, or tap (phones have no hover) ----------
   var uid = 0;
+  function tip(text, about) {
+    var id = 'tip' + (++uid);
+    return '<span class="tip"><button type="button" class="tip-btn" aria-expanded="false" aria-describedby="' + id + '"' +
+      ' aria-label="מידע נוסף' + (about ? ': ' + esc(about) : '') + '">i</button>' +
+      '<span class="tip-bubble" role="tooltip" id="' + id + '">' + esc(text) + '</span></span>';
+  }
+  function closeTips(except) {
+    document.querySelectorAll('.tip.open').forEach(function (t) {
+      if (t !== except) { t.classList.remove('open'); t.querySelector('.tip-btn').setAttribute('aria-expanded', 'false'); }
+    });
+  }
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('.tip-btn');
+    if (!btn) { closeTips(); return; }
+    var t = btn.parentNode, open = !t.classList.contains('open');
+    closeTips(t);
+    t.classList.toggle('open', open);
+    btn.setAttribute('aria-expanded', open);
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeTips(); });
+
+  // Position the bubble in viewport coordinates, clamped so it never leaves a narrow screen.
+  function placeTip(t) {
+    var btn = t.querySelector('.tip-btn'), bub = t.querySelector('.tip-bubble');
+    if (getComputedStyle(bub).display === 'none') return;
+    var r = btn.getBoundingClientRect(), vw = document.documentElement.clientWidth, vh = window.innerHeight;
+    var w = bub.offsetWidth, h = bub.offsetHeight, m = 8;
+    var cx = r.left + r.width / 2;
+    var left = Math.max(m, Math.min(vw - w - m, cx - w / 2));
+    var below = r.bottom + 8 + h <= vh - m || r.top - 8 - h < m;
+    bub.style.left = left + 'px';
+    bub.style.top = (below ? r.bottom + 8 : r.top - 8 - h) + 'px';
+    bub.style.setProperty('--arrow-x', (cx - left) + 'px');
+    bub.classList.toggle('above', !below);
+  }
+  function placeLater(e) {
+    var t = e.target.closest && e.target.closest('.tip');
+    if (t) requestAnimationFrame(function () { placeTip(t); });
+  }
+  document.addEventListener('mouseover', placeLater);
+  document.addEventListener('focusin', placeLater);
+  document.addEventListener('click', placeLater);
+  window.addEventListener('scroll', function () { document.querySelectorAll('.tip').forEach(placeTip); }, { passive: true });
+  window.addEventListener('resize', function () { document.querySelectorAll('.tip').forEach(placeTip); });
+  // static bubbles written in index.html as <span data-tip="...">
+  document.querySelectorAll('[data-tip]').forEach(function (s) { s.outerHTML = tip(s.getAttribute('data-tip'), s.getAttribute('data-about')); });
+
+  // ---------- counters ----------
   function counter(cat, counts) {
     var id = 'c' + (++uid);
     var row = el('div', { 'class': 'counter' });
     var priceTxt = cat.price ? money(cat.price) + (cat.unit ? ' ' + cat.unit : ' ללילה') : 'חינם';
     row.innerHTML =
-      '<label for="' + id + '"><span class="lbl">' + esc(cat.label) + '</span>' +
+      '<div class="who"><label for="' + id + '"><span class="lbl">' + esc(cat.label) + '</span>' +
       '<span class="meta">' + (cat.ages ? esc(cat.ages) + ' · ' : '') + priceTxt + '</span></label>' +
+      (cat.note ? tip(cat.note, cat.label) : '') + '</div>' +
       '<div class="stepper">' +
       '<button type="button" class="step" data-d="1" aria-label="הוספת ' + esc(cat.label) + '">+</button>' +
       '<input id="' + id + '" type="number" inputmode="numeric" min="0" max="99" value="' + (counts[cat.id] || 0) + '">' +
@@ -165,13 +214,15 @@
       var card = el('fieldset', { 'class': 'period' });
       var fId = 'pf' + i, tId = 'pt' + i, cId = 'pc' + i;
       card.innerHTML =
-        '<legend>' + (multi ? 'תקופה ' + (i + 1) : 'תאריכי השהייה') + '</legend>' +
+        '<legend>' + (multi ? 'תקופה ' + (i + 1) : 'תאריכי השהייה') + ' ' +
+          tip('כניסה לחניון בין 15:00 ל-19:00. פינוי עד 12:00 ביום העזיבה (מי שנשאר אחרי 12:00 משלם תוספת של 50% מדמי כניסת יום). עד ' + C.maxConsecutiveNights + ' לילות ברצף.', 'שעות') + '</legend>' +
         '<div class="dates">' +
         '<label for="' + fId + '">הגעה<br>' + dateSelect(fId, p.from) + '</label>' +
         '<label for="' + tId + '">עזיבה<br>' + dateSelect(tId, p.to) + '</label>' +
         '<span class="nights" aria-live="polite"></span>' +
         '</div>' +
-        '<label class="check"><input type="checkbox" id="' + cId + '"' + (p.custom ? ' checked' : '') + '> הרכב שונה בתקופה הזו</label>' +
+        '<div class="check"><label><input type="checkbox" id="' + cId + '"' + (p.custom ? ' checked' : '') + '> הרכב שונה בתקופה הזו</label> ' +
+        tip('למשל: סבא וסבתא מצטרפים רק ללילה אחד, או אחד ההורים מגיע מאוחר יותר. אם לא מסמנים, התקופה משתמשת בהרכב שלמעלה.', 'הרכב שונה') + '</div>' +
         '<div class="custom" ' + (p.custom ? '' : 'hidden') + '></div>' +
         (multi ? '<button type="button" class="btn-link remove">הסרת התקופה</button>' : '');
       var nightsEl = card.querySelector('.nights');
@@ -238,8 +289,10 @@
 
     var saved = r.full - r.group;
     out += '<div class="totals">' +
-      '<div class="total"><span>מחיר מלא (מקסימום)</span><strong>' + money(r.full) + '</strong></div>' +
-      '<div class="total group"><span>אם הקבוצה תמנה ' + C.groupMinPeople + ' לנים לפחות</span><strong>' + money(r.group) + '</strong>' +
+      '<div class="total"><span>מחיר מלא (מקסימום) ' +
+        tip('לפי המחירון הרגיל, כולל ביקור בגן הלאומי. משלמים בקופה בהגעה (אשראי או מזומן).', 'מחיר מלא') + '</span><strong>' + money(r.full) + '</strong></div>' +
+      '<div class="total group"><span>אם הקבוצה תמנה ' + C.groupMinPeople + ' לנים לפחות ' +
+        tip('קבוצה שמגיעה יחד ומונה 30 לנים לפחות משלמת 65 ₪ למבוגר ו-49 ₪ לילד (בערך 15% הנחה). ההנחה חלה רק על מי שמשלם מחיר רגיל, כי אין כפל הנחות.', 'מחיר קבוצתי') + '</span><strong>' + money(r.group) + '</strong>' +
       (saved > 0 ? '<small>חיסכון של ' + money(saved) + ' — הנחה קבוצתית (~15%) למשלמי מחיר רגיל</small>'
                  : '<small>אין אצלכם משלמי מחיר רגיל, ולכן ההנחה הקבוצתית לא משנה את המחיר (אין כפל הנחות)</small>') +
       '</div></div>';

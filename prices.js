@@ -18,10 +18,12 @@ window.CAMP = {
   // groupPrice: official "קבוצה" rate (≈15% off) — applies to regular payers only.
   // main: shown in the basic family composition; the rest sit under "discounts".
   categories: [
-    { id: 'adult',   label: 'מבוגר',              ages: 'גיל 14 ומעלה', price: 76, groupPrice: 65, main: true },
-    { id: 'child',   label: 'ילד',                ages: 'גיל 5 עד 13',  price: 58, groupPrice: 49, main: true },
+    { id: 'adult',   label: 'מבוגר',              ages: 'גיל 14 ומעלה', price: 76, groupPrice: 65, main: true,
+      note: 'מגיל 14 ומעלה משלמים מחיר מבוגר. בקבוצה של 30+ לנים: 65 ₪' },
+    { id: 'child',   label: 'ילד',                ages: 'גיל 5 עד 13',  price: 58, groupPrice: 49, main: true,
+      note: 'מגיל 5 ועד 14 (לא כולל). בקבוצה של 30+ לנים: 49 ₪' },
     { id: 'toddler', label: 'פעוט',               ages: 'עד גיל 5',     price: 0,  main: true,
-      note: 'ללא תשלום — המחירון גובה מגיל 5' },
+      note: 'ילדים מתחת לגיל 5 לא מופיעים במחירון ולא משלמים' },
 
     { id: 'matmonAdult',  label: 'מנוי מטמון — מבוגר', ages: 'גיל 14 ומעלה', price: 57,
       note: 'בהצגת כרטיס מנוי בתוקף, לפי ההרכב שעל הכרטיס' },
@@ -42,6 +44,6 @@ window.CAMP = {
   // Per-night extras (not people — never counted toward the group size).
   extras: [
     { id: 'mattress', label: 'השכרת מזרן', unit: 'ללילה', price: 12,
-      note: 'לפי המלאי בחניון, ללא התחייבות. חלוקה בשער 15:00–20:00, החזרה 08:00–11:00' }
+      note: 'לפי המלאי בחניון, ללא התחייבות. חלוקה בשער בין 15:00 ל-20:00, החזרה בין 08:00 ל-11:00' }
   ]
 };
