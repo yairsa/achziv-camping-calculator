@@ -132,7 +132,7 @@ td, th { padding: 6px 4px; border-bottom: 1px solid var(--line); text-align: sta
 .total.group strong { color: var(--accent); }
 
 /* registration */
-.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0; }
+.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0; align-items: end; }
 .fields label { font-size: .9rem; color: var(--muted); }
 .fields input {
   width: 100%; font: inherit; color: var(--text); background: var(--card);
@@ -150,6 +150,24 @@ button:disabled { opacity: .55; cursor: wait; }
 .msg.bad { color: var(--warn-text); background: var(--warn-bg); padding: 6px 10px; border-radius: 6px; }
 .nights-table .yes { color: var(--accent); font-weight: 700; }
 .nights-table .no { color: var(--muted); }
+.field label { font-size: .9rem; color: var(--muted); }
+.field input { margin-top: 4px; }
+.field[hidden] { display: none; }
+.pw { position: relative; }
+.pw input { padding-inline-end: 44px; }
+.eye {
+  position: absolute; inset-inline-end: 2px; top: 50%; transform: translateY(-50%); margin-top: 2px;
+  width: 40px; height: 36px; border: 0; background: none; color: var(--muted); cursor: pointer;
+}
+.eye .slash { display: none; }
+.eye[aria-pressed="true"] .slash { display: inline; }
+.eye:hover { color: var(--accent); }
+.hello { background: var(--accent-soft); border-radius: 8px; padding: 8px 12px; }
+.ask { background: var(--warn-bg); color: var(--warn-text); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+.ask p { margin: 0 0 8px; }
+.keep { border: 1px solid var(--accent); border-radius: 8px; padding: 10px 12px; margin-top: 12px; }
+.keep p { margin: 0 0 8px; }
+a.btn-secondary { display: inline-block; text-decoration: none; border-style: solid; }
 @media (max-width: 520px) { .fields { grid-template-columns: 1fr; } }
 
 /* price list + place */

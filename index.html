@@ -63,9 +63,31 @@
         <p id="reg-off" class="hint" hidden>ההרשמה עדיין לא פעילה — בינתיים אפשר להשתמש במחשבון.</p>
         <form id="reg-form" novalidate>
           <p class="hint">שמרו את מה שמילאתם כדי שנדע כמה נהיה. כדי לחזור ולעדכן — אותו שם ואותו קוד.</p>
+          <p id="reg-hello" class="hello" hidden></p>
           <div class="fields">
-            <label for="reg-user">שם המשפחה<br><input id="reg-user" type="text" autocomplete="username" maxlength="40" required placeholder="למשל: משפחת כהן"></label>
-            <label for="reg-pin">קוד אישי (4 עד 8 ספרות)<br><input id="reg-pin" type="password" inputmode="numeric" autocomplete="current-password" pattern="[0-9]*" maxlength="8" required></label>
+            <div class="field">
+              <label for="reg-user">שם המשפחה</label>
+              <span data-tip="השם עבורכם לזיהוי עצמי — כך תמצאו את ההרשמה כשתחזרו לעדכן. התחילו להקליד ויופיעו השמות שכבר נרשמו." data-about="שם המשפחה"></span>
+              <input id="reg-user" type="text" list="reg-names" autocomplete="off" maxlength="40" required placeholder="למשל: משפחת כהן">
+              <datalist id="reg-names"></datalist>
+            </div>
+            <div class="field">
+              <label for="reg-pin">קוד אישי (4 עד 8 ספרות)</label>
+              <div class="pw"><input id="reg-pin" type="password" inputmode="numeric" autocomplete="off" pattern="[0-9]*" maxlength="8" required>
+                <button type="button" class="eye" aria-controls="reg-pin" aria-pressed="false" aria-label="הצגת הקוד"><svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/><line class="slash" x1="3" y1="3" x2="21" y2="21"/></svg></button></div>
+            </div>
+            <div class="field" id="reg-pin2-field">
+              <label for="reg-pin2">הקלידו את הקוד שוב</label>
+              <div class="pw"><input id="reg-pin2" type="password" inputmode="numeric" autocomplete="off" pattern="[0-9]*" maxlength="8">
+                <button type="button" class="eye" aria-controls="reg-pin2" aria-pressed="false" aria-label="הצגת הקוד"><svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/><line class="slash" x1="3" y1="3" x2="21" y2="21"/></svg></button></div>
+            </div>
+          </div>
+          <div id="reg-ask" class="ask" hidden>
+            <p id="reg-ask-q"></p>
+            <div class="actions">
+              <button type="button" id="reg-ask-yes" class="btn-primary">כן, זה אני</button>
+              <button type="button" id="reg-ask-no" class="btn-secondary">לא, זו הרשמה חדשה</button>
+            </div>
           </div>
           <div class="actions">
             <button type="submit" id="reg-save" class="btn-primary">שמירה / עדכון</button>
@@ -73,6 +95,14 @@
             <button type="button" id="reg-delete" class="btn-link">ביטול ההרשמה</button>
           </div>
           <p id="reg-msg" class="msg" role="status" aria-live="polite"></p>
+          <div id="reg-keep" class="keep" hidden>
+            <p><strong>שמרו לעצמכם את השם והקוד</strong> — בלעדיהם אי אפשר לעדכן את ההרשמה, והקוד לא נשמר אצלנו בצורה שאפשר לשחזר.</p>
+            <div class="actions">
+              <button type="button" id="keep-copy" class="btn-secondary">העתקה</button>
+              <a id="keep-wa" class="btn-secondary" target="_blank" rel="noopener">שליחה לעצמי בוואטסאפ</a>
+              <a id="keep-mail" class="btn-secondary">שליחה לעצמי במייל</a>
+            </div>
+          </div>
         </form>
       </div>
 

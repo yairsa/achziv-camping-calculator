@@ -357,13 +357,19 @@
   var ERR = {
     bad_user: 'שם המשפחה צריך להכיל 2 עד 40 תווים.',
     bad_pin: 'הקוד צריך להיות 4 עד 8 ספרות.',
-    wrong_pin: 'השם הזה כבר רשום, והקוד לא תואם. אם זו ההרשמה שלכם — בדקו את הקוד.',
-    locked: 'יותר מדי ניסיונות עם קוד שגוי. פנו למארגנים כדי לשחרר את ההרשמה.',
+    wrong_pin: 'השם הזה כבר רשום, והקוד לא תואם. אם זו ההרשמה שלכם — בדקו את הקוד. אם לא — בחרו שם אחר.',
+    locked: 'יותר מדי ניסיונות עם קוד שגוי. ההרשמה נעולה ל-15 דקות — נסו שוב אחר כך, או פנו למארגנים.',
     not_found: 'לא מצאנו הרשמה בשם הזה.',
     too_big: 'יותר מדי נתונים — נסו לצמצם את מספר התקופות.',
     network: 'אין חיבור לשרת כרגע. נסו שוב בעוד רגע.'
   };
-  var USER_KEY = 'achziv-user';
+  var REG_KEY = 'achziv-registered';   // the name this device last saved or loaded successfully
+  var names = [];                      // registered names, from the summary (for the dropdown)
+  var signedIn = null;                 // name loaded/saved in this page visit, with the right code
+  function norm(u) { return String(u || '').trim().replace(/\s+/g, ' ').toLowerCase(); }
+  function known(u) { var n = norm(u); return names.some(function (x) { return norm(x) === n; }); }
+  function remembered() { try { return localStorage.getItem(REG_KEY) || ''; } catch (e) { return ''; } }
+  function remember(u) { try { if (u) localStorage.setItem(REG_KEY, u); else localStorage.removeItem(REG_KEY); } catch (e) { /* ignore */ } }
   // Google's web-app reply step fails intermittently (measured 30/09/2026: ~1 in 3 requests got a 404
   // page after the script had already run). Every action is safe to repeat, so retry until a JSON reply.
   function api(body, attempt) {
@@ -387,17 +393,32 @@
     m.textContent = text; m.className = 'msg' + (kind ? ' ' + kind : '');
   }
   function fail(res) { regMsg(ERR[res.error] || 'משהו השתבש. נסו שוב.', 'bad'); }
-  function creds() {
-    var user = document.getElementById('reg-user').value.trim(), pin = document.getElementById('reg-pin').value.trim();
+  // A new name needs the code typed twice; an existing name (or one already loaded here) does not.
+  function needsConfirm() {
+    var u = document.getElementById('reg-user').value;
+    return !(known(u) || (signedIn && norm(signedIn) === norm(u)));
+  }
+  function syncConfirm() { document.getElementById('reg-pin2-field').hidden = !needsConfirm(); }
+  function creds(forSave) {
+    var user = document.getElementById('reg-user').value.trim().replace(/\s+/g, ' ');
+    var pin = document.getElementById('reg-pin').value.trim();
     if (user.length < 2) { regMsg(ERR.bad_user, 'bad'); document.getElementById('reg-user').focus(); return null; }
     if (!/^\d{4,8}$/.test(pin)) { regMsg(ERR.bad_pin, 'bad'); document.getElementById('reg-pin').focus(); return null; }
-    try { localStorage.setItem(USER_KEY, user); } catch (e) { /* ignore */ }
+    if (forSave && needsConfirm() && document.getElementById('reg-pin2').value.trim() !== pin) {
+      regMsg('הקוד והאימות שלו לא זהים — הקלידו את אותו קוד בשני השדות.', 'bad');
+      document.getElementById('reg-pin2').focus(); return null;
+    }
     return { user: user, pin: pin };
   }
   function busy(on) { document.querySelectorAll('#reg-form button').forEach(function (b) { b.disabled = on; }); }
 
   function renderGroup(sum) {
     if (!sum || !sum.ok) return;
+    if (sum.names) {
+      names = sum.names;
+      document.getElementById('reg-names').innerHTML = names.map(function (n) { return '<option value="' + esc(n) + '">'; }).join('');
+      syncConfirm();
+    }
     document.getElementById('group-card').hidden = false;
     var box = document.getElementById('group-status');
     var keys = Object.keys(sum.nights).sort();
@@ -419,25 +440,104 @@
              maxPeople: r.maxPeople, full: r.full, group: r.group };
   }
 
+  // After a successful save/load: let people keep name + code themselves (we cannot recover the code).
+  function showKeep(c) {
+    var url = /^https?:/.test(location.protocol) ? location.href.split('#')[0] : '';
+    var text = 'ההרשמה שלי לקמפינג באכזיב\nשם: ' + c.user + '\nקוד: ' + c.pin + (url ? '\n' + url : '');
+    document.getElementById('keep-wa').href = 'https://wa.me/?text=' + encodeURIComponent(text);
+    document.getElementById('keep-mail').href = 'mailto:?subject=' + encodeURIComponent('ההרשמה שלי לקמפינג באכזיב') +
+      '&body=' + encodeURIComponent(text);
+    document.getElementById('keep-copy').onclick = function () {
+      var done = function () { regMsg('הפרטים הועתקו — הדביקו אותם במקום שמור.', 'good'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+      else fallback();
+      function fallback() {
+        var t = el('textarea'); t.value = text; document.body.appendChild(t); t.select();
+        try { document.execCommand('copy'); done(); } catch (e) { regMsg('לא הצלחנו להעתיק — רשמו את השם והקוד בעצמכם.', 'bad'); }
+        t.remove();
+      }
+    };
+    document.getElementById('reg-keep').hidden = false;
+  }
+
+  function signIn(user) {
+    signedIn = user; remember(user);
+    document.getElementById('reg-hello').hidden = true;
+    syncConfirm();
+  }
+
+  function doSave(c) {
+    busy(true); regMsg('שומר…');
+    api(Object.assign({ action: 'save' }, payload(c))).then(function (res) {
+      busy(false);
+      if (!res.ok) return fail(res);
+      signIn(c.user);
+      regMsg(res.created ? 'נרשמתם! אפשר לחזור ולעדכן עם אותו שם וקוד.' : 'ההרשמה עודכנה — הפרטים הקודמים הוחלפו בחדשים.', 'good');
+      renderGroup(res.summary);
+      showKeep(c);
+    });
+  }
+
   function initRegistration() {
     if (!C.apiUrl) { document.getElementById('reg-form').hidden = true; document.getElementById('reg-off').hidden = false; return; }
-    try { var u = localStorage.getItem(USER_KEY); if (u) document.getElementById('reg-user').value = u; } catch (e) { /* ignore */ }
+    var userEl = document.getElementById('reg-user');
+    var mine = remembered();
+    if (mine) {
+      userEl.value = mine;
+      var hello = document.getElementById('reg-hello');
+      hello.innerHTML = 'מהמכשיר הזה נרשמתם בשם <strong>' + esc(mine) + '</strong>. כדי לראות או לעדכן — הקלידו את הקוד ולחצו "טעינת ההרשמה שלי".';
+      hello.hidden = false;
+    }
+    userEl.addEventListener('input', function () {
+      syncConfirm();
+      document.getElementById('reg-ask').hidden = true;
+      if (signedIn && norm(signedIn) !== norm(userEl.value)) document.getElementById('reg-keep').hidden = true;
+    });
+    syncConfirm();
 
-    document.getElementById('reg-form').addEventListener('submit', function (e) {
-      e.preventDefault();
-      var c = creds(); if (!c) return;
-      if (warnings(state).length) { regMsg('יש בעיה בפרטים שמילאתם — ראו את ההערות בסעיף 3.', 'bad'); return; }
-      busy(true); regMsg('שומר…');
-      api(Object.assign({ action: 'save' }, payload(c))).then(function (res) {
-        busy(false);
-        if (!res.ok) return fail(res);
-        regMsg(res.created ? 'נרשמתם! אפשר לחזור ולעדכן עם אותו שם וקוד.' : 'ההרשמה עודכנה.', 'good');
-        renderGroup(res.summary);
+    // eye buttons: show / hide the code
+    document.querySelectorAll('#reg-form .eye').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var input = document.getElementById(b.getAttribute('aria-controls'));
+        var show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        b.setAttribute('aria-pressed', show);
+        b.setAttribute('aria-label', show ? 'הסתרת הקוד' : 'הצגת הקוד');
       });
     });
 
+    var pending = null;
+    document.getElementById('reg-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var c = creds(true); if (!c) return;
+      if (warnings(state).length) { regMsg('יש בעיה בפרטים שמילאתם — ראו את ההערות בסעיף 3.', 'bad'); return; }
+      // Same device, a different and new name: probably the same family under another spelling.
+      var mine = remembered();
+      if (mine && norm(mine) !== norm(c.user) && known(mine) && !known(c.user)) {
+        pending = c;
+        document.getElementById('reg-ask-q').innerHTML = 'מהמכשיר הזה כבר נרשמו בשם <strong>' + esc(mine) +
+          '</strong>. האם את.ה ' + esc(mine) + '? אם כן — עדיף לעדכן את ההרשמה הקיימת במקום ליצור חדשה.';
+        document.getElementById('reg-ask').hidden = false;
+        document.getElementById('reg-ask-yes').focus();
+        return;
+      }
+      doSave(c);
+    });
+    document.getElementById('reg-ask-yes').addEventListener('click', function () {
+      document.getElementById('reg-ask').hidden = true; pending = null;
+      userEl.value = remembered();
+      document.getElementById('reg-pin').value = ''; document.getElementById('reg-pin2').value = '';
+      syncConfirm();
+      regMsg('הקלידו את הקוד של ההרשמה הקיימת ולחצו "טעינת ההרשמה שלי" — ואז אפשר לשנות ולשמור.', 'good');
+      document.getElementById('reg-pin').focus();
+    });
+    document.getElementById('reg-ask-no').addEventListener('click', function () {
+      document.getElementById('reg-ask').hidden = true;
+      if (pending) { var c = pending; pending = null; doSave(c); }
+    });
+
     document.getElementById('reg-load').addEventListener('click', function () {
-      var c = creds(); if (!c) return;
+      var c = creds(false); if (!c) return;
       busy(true); regMsg('טוען…');
       api({ action: 'load', user: c.user, pin: c.pin }).then(function (res) {
         busy(false);
@@ -448,17 +548,23 @@
                     periods: d.periods.map(function (p) { return { from: p.from, to: p.to, custom: !!p.custom, counts: Object.assign(emptyCounts(), p.counts) }; }) };
           renderBase(); renderPeriods(); update();
         }
-        regMsg('ההרשמה נטענה' + (res.updated ? ' (עודכנה לאחרונה ' + res.updated + ')' : '') + '. אפשר לשנות ולשמור שוב.', 'good');
+        signIn(res.family || c.user);
+        regMsg('ההרשמה נטענה' + (res.updated ? ' (עודכנה לאחרונה ' + res.updated + ')' : '') +
+          '. אפשר לשנות ולשמור שוב — השמירה תחליף את הפרטים הקודמים.', 'good');
+        showKeep(c);
       });
     });
 
     document.getElementById('reg-delete').addEventListener('click', function () {
-      var c = creds(); if (!c) return;
+      var c = creds(false); if (!c) return;
       if (!confirm('לבטל את ההרשמה של "' + c.user + '"?')) return;
       busy(true); regMsg('מבטל…');
       api({ action: 'delete', user: c.user, pin: c.pin }).then(function (res) {
         busy(false);
         if (!res.ok) return fail(res);
+        if (norm(remembered()) === norm(c.user)) remember('');
+        signedIn = null;
+        document.getElementById('reg-keep').hidden = true;
         regMsg('ההרשמה בוטלה.', 'good');
         if (res.summary) renderGroup(res.summary); else api(null).then(renderGroup);
       });
