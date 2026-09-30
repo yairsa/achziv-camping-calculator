@@ -743,18 +743,7 @@ function leave_(req, store, as) {
 }
 
 // Pure: the example activities (menu "הוספת 3 פעילויות לדוגמה"). Owned by "המארגנים", so no family edits them.
-var DEMO_OWNER = 'המארגנים';
-var DEMO_NOTE = '\n\nזו פעילות לדוגמה, כדי להראות איך זה נראה.';
-var DEMO_ACTS = [
-  { clientId: 'demo-activity-1', topic: 'ארוחת ערב משותפת ומנגל', start: '2026-10-07T18:30', end: '2026-10-07T21:00', tag: 'לכולם',
-    capacity: '', description: 'מדליקים מנגלים ליד השולחנות, וכל משפחה מביאה משהו לשולחן המשותף.',
-    required: 'צלחת, כוס וסכו"ם', suggested: 'סלט או קינוח לשולחן המשותף' },
-  { clientId: 'demo-activity-2', topic: 'יוגה בזריחה על החוף', start: '2026-10-08T06:00', end: '2026-10-08T07:00', tag: 'מבוגרים',
-    capacity: 12, description: 'תרגול רגוע לכל הרמות, מול הים.', required: 'מזרן יוגה או מגבת', suggested: 'בקבוק מים' },
-  { clientId: 'demo-activity-3', topic: 'חיפוש אוצרות בחוף', start: '2026-10-09T10:00', end: '2026-10-09T11:30', tag: 'ילדים',
-    ageFrom: 5, ageTo: 10, capacity: 15, description: 'משימות ורמזים לאורך החוף, ופרס קטן בסוף.',
-    required: 'כובע ובקבוק מים', suggested: 'דלי קטן' }
-];
+//@include acts-demo.js
 function addDemoActivities_(as) {
   var n = 0;
   DEMO_ACTS.forEach(function (d) {

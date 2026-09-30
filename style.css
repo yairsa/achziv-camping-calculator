@@ -39,7 +39,7 @@ body {
   margin: 0; background: var(--bg); color: var(--text);
   font: 17px/1.55 "Assistant", "Segoe UI", Arial, sans-serif;
 }
-main, .top, .tabs, .foot { max-width: 760px; margin-inline: auto; padding-inline: 16px; }
+main, .top, .tabs { max-width: 760px; margin-inline: auto; padding-inline: 16px; }
 h1 { font-size: 1.7rem; margin: 24px 0 4px; }
 h2 { font-size: 1.2rem; margin: 0 0 8px; }
 h3 { font-size: 1rem; margin: 0 0 6px; }
@@ -367,7 +367,7 @@ p.awho { border: 0; padding: 0; }
 #af-ages[hidden], #act-dlg [hidden] { display: none; }
 .hmsel { display: inline-flex; align-items: center; gap: 2px; }
 
-.foot { font-size: .85rem; color: var(--muted); padding-bottom: 32px; }
+.foot { font-size: .85rem; color: var(--muted); margin-top: 16px; padding-bottom: 8px; }
 
 @media (max-width: 520px) {
   body { font-size: 16px; }

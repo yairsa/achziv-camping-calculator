@@ -40,6 +40,15 @@
     network: 'אין חיבור לשרת כרגע. נסו שוב בעוד רגע.'
   };
   var CRED_ERRORS = { not_registered: 1, wrong_pin: 1, locked: 1, bad_user: 1, bad_pin: 1 };
+  // Preview link ?demo#acts: the example activities (acts-demo.js), shown here only, never sent or saved.
+  var DEMO = /(^\?|&)demo(=|&|$)/.test(location.search);
+  function demoActs() {
+    return DEMO_ACTS.map(function (d, i) {
+      return { id: i + 1, owner: DEMO_OWNER, topic: d.topic, description: d.description + DEMO_NOTE, start: d.start, end: d.end,
+               tag: d.tag, ageFrom: d.ageFrom == null ? null : d.ageFrom, ageTo: d.ageTo == null ? null : d.ageTo,
+               capacity: +d.capacity || 0, required: d.required, suggested: d.suggested, joined: [], taken: 0 };
+    });
+  }
 
   var acts = [], live = false, started = false;
   var view = 'list', day = '', tag = '', calPage = 0;
@@ -335,6 +344,7 @@
   function write(body, onOk) {
     if (writing) return;
     var c = creds(), msg = $('act-msg');
+    if (DEMO) { say(msg, 'זו תצוגה לדוגמה, ולא נשמר בה כלום.', 'bad'); return; }
     if (c.error) { say(msg, ERR[c.error], 'bad'); return; }
     writing = true;
     var buttons = $('act-dlg-body').querySelectorAll('button');
@@ -470,6 +480,11 @@
   function start() {
     if (started) return;
     started = true;
+    if (DEMO) {
+      acts = demoActs(); live = true;
+      say($('acts-state'), 'תצוגה לדוגמה: הפעילויות כאן לא אמיתיות, ולא נשמר כלום.', 'bad');
+      $('acts-add').hidden = false; render(); return;
+    }
     var cached = readJson(CACHE_KEY);
     if (cached && cached.activities) { acts = cached.activities; say($('acts-state'), ''); render(); }
     if (!C.apiUrl) { say($('acts-state'), 'הפעילויות עדיין לא פעילות.'); $('acts-add').hidden = true; return; }

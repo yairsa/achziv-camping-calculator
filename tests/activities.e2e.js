@@ -251,10 +251,27 @@ let oldBackend = false, dropNext = 0, delay = 0, calls = [];
   assert.strictEqual(await page.inputValue('#act-pin'), '5555');
   await page.click('#act-dlg-close');
 
+  // ---- the preview link ?demo#acts: the example activities, never sent or saved ----
+  calls = [];
+  await page.evaluate(() => localStorage.removeItem('achziv-acts-cache'));
+  await page.goto(url + '?demo#acts');
+  await page.waitForTimeout(500);
+  assert.ok(await page.isVisible('#panel-acts'), 'the preview link opens the tab');
+  assert.deepStrictEqual(await page.locator('.arow .atopic').allInnerTexts(), ['ארוחת ערב משותפת ומנגל', 'יוגה בזריחה על החוף', 'חיפוש אוצרות בחוף']);
+  assert.ok((await text('#acts-state')).includes('תצוגה לדוגמה'));
+  await page.click('.arow[data-id="2"]');
+  await page.fill('#act-user', 'Levi'); await page.fill('#act-pin', '5555');
+  await page.click('#act-join');
+  assert.ok((await msg()).includes('לא נשמר'), await msg());
+  assert.ok(!calls.includes('activities') && !calls.includes('join'), 'the preview talked to the server: ' + calls);
+  assert.strictEqual(await page.evaluate(() => localStorage.getItem('achziv-acts-cache')), null, 'the preview was cached');
+  await page.click('#act-dlg-close');
+  await noHScroll('preview');
+
   // ---- the live script before the activities version ----
   oldBackend = true;
   await page.evaluate(() => localStorage.clear());
-  await page.reload();
+  await page.goto(url);                                                      // off the preview link
   await page.click('#tab-acts');
   await page.waitForFunction(() => /בקרוב/.test(document.getElementById('acts-state').textContent), null, { timeout: 5000 });
   assert.ok(await page.isHidden('#acts-add'));

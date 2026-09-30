@@ -977,6 +977,9 @@ function leave_(req, store, as) {
 }
 
 // Pure: the example activities (menu "\u05d4\u05d5\u05e1\u05e4\u05ea 3 \u05e4\u05e2\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea \u05dc\u05d3\u05d5\u05d2\u05de\u05d4"). Owned by "\u05d4\u05de\u05d0\u05e8\u05d2\u05e0\u05d9\u05dd", so no family edits them.
+// The example activities - shared by the site and the backend (docs/activities-plan.md \u00a75.2b).
+// The backend adds them to the sheet from the menu "\u05d4\u05d5\u05e1\u05e4\u05ea 3 \u05e4\u05e2\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea \u05dc\u05d3\u05d5\u05d2\u05de\u05d4" (backend/build.py inlines this file
+// into Code.gs at `//@include acts-demo.js`). The site shows them, unsaved, on the preview link ?demo#acts.
 var DEMO_OWNER = '\u05d4\u05de\u05d0\u05e8\u05d2\u05e0\u05d9\u05dd';
 var DEMO_NOTE = '\n\n\u05d6\u05d5 \u05e4\u05e2\u05d9\u05dc\u05d5\u05ea \u05dc\u05d3\u05d5\u05d2\u05de\u05d4, \u05db\u05d3\u05d9 \u05dc\u05d4\u05e8\u05d0\u05d5\u05ea \u05d0\u05d9\u05da \u05d6\u05d4 \u05e0\u05e8\u05d0\u05d4.';
 var DEMO_ACTS = [

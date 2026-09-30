@@ -18,6 +18,12 @@ const CHROME = process.env.CHROME || 'C:/Program Files/Google/Chrome/Application
   await page.goto(url);
   assert.deepStrictEqual(await page.locator('[role=tab]').allInnerTexts(), ['מחשבון', 'על המקום', 'ציוד', 'פעילויות', 'טיפים']);
   assert.ok(await page.isVisible('#open-prices') && await page.isHidden('#calc-prices'));
+  // the calculator's note shows under the calculator only
+  assert.ok((await page.locator('.foot').innerText()).includes('המחיר הקובע'));
+  assert.ok(await page.isVisible('.foot'));
+  for (const t of ['#tab-place', '#tab-gear', '#tab-acts', '#tab-tips']) { await page.click(t); assert.ok(await page.isHidden('.foot'), 'the note shows on ' + t); }
+  await page.click('#tab-calc');
+  await page.mouse.move(180, 500);                                           // off the tab row, so the wheel scrolls the page
 
   // the tab row and the calculator's bar stay on top while scrolling
   await page.mouse.wheel(0, 1500); await page.waitForTimeout(200);

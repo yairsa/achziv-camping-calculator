@@ -80,6 +80,7 @@ The organizers' sheet gets an **פעילויות** tab (topic, time, owner, join
 - [x] Each audience has its own colour (לכולם green, מבוגרים blue, ילדים orange, with dark-mode variants) on calendar blocks, list rows, the tag text and the filter chips. The chips serve as the legend. A full activity has a dashed edge in the calendar
 - [x] Three demo activities, one per audience, owned by "המארגנים" (no family can edit them). They come from the sheet menu **מארגנים → הוספת 3 פעילויות לדוגמה**, which is safe to run twice. Hide one with status `הוסתר`
   - a menu item, because the live script is not deployed yet and a write through the site needs a family's code. Tested in `tests/backend.test.js`: each demo passes the same checks as a family's own activity
+- [x] Preview link **`?demo#acts`** (Yair was away from the computer, 30/09/2026): shows the same three demos (`acts-demo.js`, also inlined into Code.gs) in this browser only. Nothing is sent, cached or saved, and a join or save says so. Live: https://yairsa.github.io/achziv-camping-calculator/?demo#acts
 - [x] Gate: all 8 suites green
 
 #### 5.3 Go-live
