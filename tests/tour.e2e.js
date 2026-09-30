@@ -100,7 +100,7 @@ const errors = [];
     return n;
   }
 
-  // ---- the first visit: the welcome tour, 8 steps, the disclaimer in step 1 ----
+  // ---- the first visit: the welcome tour, 9 steps, the disclaimer in step 1 ----
   let page = await visitor('none');
   await page.goto(url);
   await waitTour(page);
@@ -110,7 +110,15 @@ const errors = [];
   // back and forth, then the whole walk
   await page.click('#tour-next'); await settled(page); await page.click('#tour-prev'); await settled(page);
   assert.ok((await page.innerText('#tour-count')).startsWith('1 '));
-  assert.strictEqual(await walk(page, 'welcome'), 8);
+  // the order: the ? button, the tabs, the price list, then the form
+  const order = [];
+  for (let i = 0; i < 4; i++) {
+    order.push(await page.evaluate(() => { const e = window.Tour.current(); return e ? e.id || e.className : null; }));
+    await page.click('#tour-next'); await settled(page);
+  }
+  assert.deepStrictEqual(order, [null, 'tour-help', 'tabs', 'open-prices'], JSON.stringify(order));
+  for (let i = 0; i < 4; i++) { await page.click('#tour-prev'); await settled(page); }
+  assert.strictEqual(await walk(page, 'welcome'), 9);
   assert.strictEqual((await seen(page)).welcome, 1);
   await page.reload(); await page.waitForTimeout(800);
   assert.ok(!(await open(page)), 'the welcome tour ran twice');
@@ -253,8 +261,8 @@ const errors = [];
   assert.strictEqual(html, '<p>פסקה ראשונה<br>שורה שנייה</p><p><strong>מודגש</strong> ואז &lt;b&gt;לא HTML&lt;/b&gt;</p>', html);
   await checkStep(page, 'sheet text');
   await page.click('#tour-next'); await settled(page);
-  assert.strictEqual(await page.innerText('#tour-title'), 'חלקי האתר', 'a cleared cell did not fall back');
-  assert.ok((await page.innerText('#tour-text')).startsWith('כאן עוברים בין החלקים'));
+  assert.strictEqual(await page.innerText('#tour-title'), 'הסיור תמיד כאן', 'a cleared cell did not fall back');
+  assert.ok((await page.innerText('#tour-text')).includes('בכפתור ?'));
   await page.keyboard.press('Escape');
   // the next visit shows the cached sheet text at once
   await page.evaluate(() => localStorage.removeItem('achziv-tour-v1'));

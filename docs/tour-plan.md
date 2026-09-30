@@ -102,6 +102,8 @@
   - fetched 2s after load, also under `?notour` (so ? replays get it)
 - [x] `tour.e2e.js`: an edited title/text from the mocked sheet shows in the bubble; bold and paragraphs render; HTML in a cell shows as text; the old script (`bad_request`) keeps the built-in text
 
+- [x] Welcome tour reordered (Yair, 30/09/2026: *"the מחירון bubble should be after the tabs bubble, then we continue with how to fill the form; the 2nd bubble should explain the tutorial is available through the ? button"*): hello → **? button** (new step `help`, the arrow on the button) → tabs → מחירון → the form → share. The "? replays" line moved from the last bubble to step 2. Now 9 steps
+
 #### 5.4 Gate and go-live
 - [x] All 9 gates green; push; live check (built-in text, since the old script is still deployed) — 78f3a9f; live 30/09: built-in text with bold, nothing cached (old script), no errors, no sideways scroll at 360px
 - [ ] Hand Yair `Code.gs` on the clipboard to paste and deploy a new version. Then a live check that the tab הדרכה appears and an edit shows on the site

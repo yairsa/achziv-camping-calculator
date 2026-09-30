@@ -473,23 +473,26 @@ console.log('activities tests passed');
   assert.deepStrictEqual(seed.filter(r => r[0] === names.gear).map(r => r[1]), [1, 2, 3, 4, 5]);
   const rows = seed.map(r => ({ tour: r[0], step: r[1], key: r[2], title: r[3], text: r[4] }));
   const T = () => P(ctx.route({ action: 'tour' }, null, { tour: () => rows }));
+  const at = (tour, key) => rows.findIndex(r => r.tour === names[tour] && r.key === key);
+  const [iTabs, iWho, iWhen, iCost] = [at('welcome', 'tabs'), at('welcome', 'who'), at('welcome', 'when'), at('welcome', 'cost')];
+  assert.deepStrictEqual([iTabs, iWho, iWhen, iCost], [2, 4, 5, 6]);   // consecutive: steps[k] below is rows[k] until 'when' is dropped
   // untouched: every step comes back as seeded
   let res = T();
   assert.ok(res.ok);
   assert.deepStrictEqual(res.steps, texts.map(t => ({ tour: t.tour, key: t.key, title: t.title, text: t.text })));
   // an edited row wins; an empty cell is left out (the site falls back); an empty row is dropped
-  rows[1].title = 'כותרת חדשה'; rows[1].text = 'שורה\n\nעוד **חשוב**';
-  rows[2].title = '   '; rows[3].title = ''; rows[3].text = '';
+  rows[iTabs].title = 'כותרת חדשה'; rows[iTabs].text = 'שורה\n\nעוד **חשוב**';
+  rows[iWho].title = '   '; rows[iWhen].title = ''; rows[iWhen].text = '';
   res = T();
-  assert.deepStrictEqual(res.steps[1], { tour: 'welcome', key: 'tabs', title: 'כותרת חדשה', text: 'שורה\n\nעוד **חשוב**' });
-  assert.deepStrictEqual(res.steps[2], { tour: 'welcome', key: 'who', text: texts[2].text });
+  assert.deepStrictEqual(res.steps[iTabs], { tour: 'welcome', key: 'tabs', title: 'כותרת חדשה', text: 'שורה\n\nעוד **חשוב**' });
+  assert.deepStrictEqual(res.steps[iWho], { tour: 'welcome', key: 'who', text: texts[iWho].text });
   assert.ok(!res.steps.some(s => s.key === 'when' && s.tour === 'welcome'));
   // an unknown key or tour is ignored; a formula guard is removed
   rows.push({ tour: names.gear, step: 9, key: 'nope', title: 'x', text: 'x' }, { tour: 'לא קיים', step: 1, key: 'hello', title: 'x', text: 'x' });
-  rows[4].text = "'=1+1";
+  rows[iCost].text = "'=1+1";
   res = T();
   assert.strictEqual(res.steps.length, texts.length - 1);
-  assert.strictEqual(res.steps[3].text, '=1+1');
+  assert.strictEqual(res.steps[iCost - 1].text, '=1+1');
   // a store without the tab (older mocks) answers with no steps
   assert.deepStrictEqual(P(ctx.route({ action: 'tour' }, null, {})), { ok: true, steps: [] });
 }

@@ -15,11 +15,12 @@
   var TOURS = {
     welcome: { tab: 'calc', steps: [
       { key: 'hello' },
+      { key: 'help', target: '#tour-help', top: true },
       { key: 'tabs', target: '.tabs', top: true },
+      { key: 'prices', target: '#open-prices', top: true },
       { key: 'who', target: function () { return h2of('base-main'); } },
       { key: 'when', target: function () { return h2of('periods'); } },
       { key: 'cost', target: function () { return h2of('result'); } },
-      { key: 'prices', target: '#open-prices', top: true },
       { key: 'register', target: function () { return h2of('reg-form'); } },
       { key: 'share', target: '#share-btn', top: true }
     ] },
