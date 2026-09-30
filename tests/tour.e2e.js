@@ -129,7 +129,7 @@ const errors = [];
   await page.evaluate(() => localStorage.setItem('achziv-tour-v1', JSON.stringify({ welcome: 1, gear: 1, acts: 1, tips: 1 })));
   for (const t of ['calc', 'place', 'gear', 'acts', 'tips']) {
     await page.click('#tab-' + t);
-    assert.ok(await page.isVisible('.site-note') && (await page.innerText('.site-note')).includes('לא רשמי'), 'no note on ' + t);
+    assert.ok(await page.isVisible('.site-note') && (await page.innerText('.site-note')).includes('אינו רשמי'), 'no note on ' + t);
   }
 
   // ---- the tab tours: once each, on first opening ----
