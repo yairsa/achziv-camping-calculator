@@ -128,5 +128,5 @@ The organizers' sheet gets an **פעילויות** tab (topic, time, owner, join
 - [x] `activities.e2e.js`: the list holds exactly the joined/own ones, the count, both empty states, 360px no sideways scroll
 
 #### 6.3 Gate and go-live
-- [ ] All 9 gates green; push; live check
+- [x] All 9 gates green; push; live check — d08ee66; live 01/10: the 3 demo activities with their places text, הרשימה שלי shows the no-family message, no errors, no sideways scroll at 360px
 - [ ] Hand Yair `Code.gs` on the clipboard (deploy a new version)
