@@ -55,6 +55,16 @@ let ts = store(), oldBackend = false, dropNext = 0, delay = 0, calls = [];
   assert.strictEqual(await text('#gear-view-mine'), 'הרשימה שלי (0)');
   const openSecs = () => page.locator('#gear-pick-list details[open]').count();
   assert.strictEqual(await openSecs(), 0, 'the general list should start collapsed');
+  // a folded section must look like it opens (flex on <summary> hides the browser's arrow)
+  assert.ok(await page.evaluate(() => { const c = getComputedStyle(document.querySelector('.gsec summary > span'), '::before');
+    return c.content !== 'none' && parseFloat(c.borderLeftWidth) > 1 && c.transform !== 'none'; }), 'folded sections show no arrow');
+  await page.click('#gear-expand');
+  assert.strictEqual(await openSecs(), await page.locator('#gear-pick-list .gsec').count(), 'open all');
+  assert.strictEqual(await text('#gear-expand'), 'סגירת כל הקטגוריות');
+  assert.strictEqual(await page.locator('#gear-pick-list li:visible').count(), SEED.length);
+  await page.click('#gear-expand');
+  assert.strictEqual(await openSecs(), 0, 'close all');
+  assert.strictEqual(await text('#gear-expand'), 'פתיחת כל הקטגוריות');
   await noHScroll('pick');
 
   // ---- search and tag filter ----

@@ -73,6 +73,8 @@ A fifth tab, **ציוד**, with two views:
 - [x] Gate: `node tests/gear.e2e.js` (headless Chrome, 360px, mocked backend) + all other gates
   - mutation-checked: disabling the merge, or packed-to-bottom, turns it red.
 
+- [x] Yair, 30/09/2026: *"The items list is not showing in the general view"* — the list was there, folded: `display: flex` on `<summary>` hid the browser's arrow, so 11 folded headers read as an empty list. Fixed with a drawn chevron on every header and a "פתיחת / סגירת כל הקטגוריות" button; the e2e checks the arrow exists.
+
 #### 5.2b Expanded starter list
 - [x] Yair, 30/09/2026: *"Lets expand ציוד list. Use [his Google Doc 'רשימת קמפינג'] as reference. Make specific items (like תרופה ספציפית) to general (תרופות)"*
   - 101 → 117 items. Specific items made general in place (תרופות, ציוד רפואי אישי, הלבשה תחתונה…); new items appended as ids 102-117, because ids 1-101 were already live and ticks are stored by id. A backend test pins id 101 = ספר.

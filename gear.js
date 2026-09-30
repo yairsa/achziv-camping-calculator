@@ -139,6 +139,9 @@
       }), picked + '/' + inSec.length, filtering || openSecs[sec]);   // a search opens every section it found
     });
     $('gear-pick-list').innerHTML = html;
+    var allOpen = secs.every(function (sec) { return openSecs[sec]; });
+    $('gear-expand').textContent = allOpen ? 'סגירת כל הקטגוריות' : 'פתיחת כל הקטגוריות';
+    $('gear-expand').hidden = filtering;                       // a search already opens what it found
     var total = rows.length;
     $('gear-count').textContent = shown === total ? total + ' פריטים ברשימה הכללית.'
       : !shown ? 'לא נמצאו פריטים. נסו מילה אחרת, או בטלו את הסינון.'
@@ -240,7 +243,15 @@
       var d = e.target;
       if (!d.classList || !d.classList.contains('gsec') || searchWords_($('gear-q').value).length || tag) return;
       openSecs[d.getAttribute('data-sec')] = d.open;
+      var secs = allSections(generalRows().concat(ownRows(state())));
+      $('gear-expand').textContent = secs.every(function (sec) { return openSecs[sec]; }) ? 'סגירת כל הקטגוריות' : 'פתיחת כל הקטגוריות';
     }, true);
+    $('gear-expand').addEventListener('click', function () {
+      var secs = allSections(generalRows().concat(ownRows(state())));
+      var open = !secs.every(function (sec) { return openSecs[sec]; });
+      secs.forEach(function (sec) { openSecs[sec] = open; });
+      renderPick();
+    });
     $('gear-clear').addEventListener('click', function () {
       if (!window.confirm('לנקות את כל הבחירות מהרשימה הכללית? פריטים אישיים שהוספתם נשארים.')) return;
       var s = state();
