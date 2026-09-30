@@ -235,7 +235,10 @@
         '<div class="check"><label><input type="checkbox" id="' + cId + '"' + (p.custom ? ' checked' : '') + '> הרכב שונה בתקופה הזו</label> ' +
         tip('למשל: סבא וסבתא מצטרפים רק ללילה אחד, או אחד ההורים מגיע מאוחר יותר. אם לא מסמנים, התקופה משתמשת בהרכב שלמעלה.', 'הרכב שונה') + '</div>' +
         '<div class="custom" ' + (p.custom ? '' : 'hidden') + '></div>' +
-        (multi ? '<button type="button" class="btn-link remove">הסרת התקופה</button>' : '');
+        (multi ? '<button type="button" class="remove" aria-label="מחיקת תקופה ' + (i + 1) + '" title="מחיקת התקופה">' +
+          '<svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+          '<path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>' +
+          '<path d="M10 11v6"/><path d="M14 11v6"/></svg></button>' : '');
       var nightsEl = card.querySelector('.nights');
       function showNights() { var n = nightsBetween(p.from, p.to); nightsEl.textContent = n > 0 ? n + (n === 1 ? ' לילה' : ' לילות') : '—'; }
       showNights();
@@ -260,7 +263,13 @@
         update();
       });
       var rm = card.querySelector('.remove');
-      if (rm) rm.addEventListener('click', function () { state.periods.splice(i, 1); renderPeriods(); update(); });
+      if (rm) rm.addEventListener('click', function () {
+        var n = nightsBetween(p.from, p.to);
+        if (!confirm('למחוק את תקופה ' + (i + 1) + ' (' + dm(p.from) + ' עד ' + dm(p.to) + ', ' + n + (n === 1 ? ' לילה' : ' לילות') + ')?')) return;
+        state.periods.splice(i, 1); renderPeriods(); update();
+        var next = document.getElementById('pf' + Math.min(i, state.periods.length - 1));
+        if (next) next.focus();
+      });
       box.appendChild(card);
     });
   }
