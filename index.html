@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>מחשבון קמפינג אכזיב</title>
+  <meta name="description" content="מחשבון עלות לינה לקבוצה בחניון הלילה אכזיב (החניון הצפוני), 06/10 עד 10/10/2026">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip" href="#main">דלג לתוכן</a>
+
+  <header class="top">
+    <h1>כמה תעלה לנו הלינה?</h1>
+    <p class="sub">קמפינג קבוצתי · חניון לילה גן לאומי אכזיב — <strong>החניון הצפוני</strong> · 06/10 עד 10/10/2026</p>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="חלקי האתר">
+    <button role="tab" id="tab-calc"   aria-controls="panel-calc"   aria-selected="true">מחשבון</button>
+    <button role="tab" id="tab-prices" aria-controls="panel-prices" aria-selected="false" tabindex="-1">מחירון</button>
+    <button role="tab" id="tab-place"  aria-controls="panel-place"  aria-selected="false" tabindex="-1">על המקום ונגישות</button>
+  </nav>
+
+  <main id="main">
+
+    <!-- ===== Calculator ===== -->
+    <section role="tabpanel" id="panel-calc" aria-labelledby="tab-calc">
+
+      <div class="card">
+        <h2>1. מי מגיע?</h2>
+        <p class="hint">כל אדם נספר פעם אחת בלבד. מי שזכאי להנחה — ספרו אותו רק בשורת ההנחה שלו.</p>
+        <div id="base-main" class="counters"></div>
+
+        <details id="base-discounts-box">
+          <summary>יש לכם הנחה או זכאות? (מטמון, מילואים, חיילים, סטודנטים, אזרחים ותיקים, נכים)</summary>
+          <div id="base-discounts" class="counters"></div>
+          <p class="hint">אין כפל הנחות. ההנחות ניתנות לזכאים בלבד ובהצגת כרטיס בתוקף.</p>
+        </details>
+
+        <details id="base-extras-box">
+          <summary>תוספות (השכרת מזרנים)</summary>
+          <div id="base-extras" class="counters"></div>
+        </details>
+      </div>
+
+      <div class="card">
+        <h2>2. מתי?</h2>
+        <p class="hint">ברירת המחדל: כל השהייה, 06/10 עד 10/10 (4 לילות). מגיעים רק לחלק מהזמן, או בהפסקות? פצלו לתקופות.</p>
+        <div id="periods"></div>
+        <button type="button" id="add-period" class="btn-secondary">+ הוספת תקופה (פיצול השהייה)</button>
+      </div>
+
+      <div class="card result" aria-live="polite">
+        <h2>3. כמה זה עולה</h2>
+        <div id="result"></div>
+      </div>
+
+      <p class="center"><button type="button" id="reset" class="btn-link">איפוס המחשבון</button></p>
+    </section>
+
+    <!-- ===== Price list ===== -->
+    <section role="tabpanel" id="panel-prices" aria-labelledby="tab-prices" hidden>
+      <div class="card">
+        <h2>מחירון לינת שטח באוהלים פרטיים</h2>
+        <p class="hint">מחיר לאדם ללילה. אותו מחיר באמצע שבוע ובסופי שבוע. מחיר הלינה כולל ביקור בגן הלאומי.</p>
+        <div class="table-wrap"><table id="price-table"></table></div>
+        <ul class="notes">
+          <li><strong>הנחה קבוצתית</strong> — לקבוצה שמגיעה יחד ומונה 30 לנים לפחות. חלה רק על משלמי מחיר רגיל (מבוגרים וילדים בלי הנחה אחרת). אין כפל הנחות.</li>
+          <li>ילד = מגיל 5 עד 14. מתחת לגיל 5 אין תשלום במחירון.</li>
+          <li>זכאים להנחה או לפטור (לינת שטח בלבד, בהצגת תעודה): נכה צה"ל ומלווה, נכה שחוק נכי המלחמה בנאצים חל עליו ומלווה, מלווה לאדם עם מוגבלות, תורם איבר בפועל, מדריך תיירים, אזרח ותיק, סטודנט, חיילי חובה ושירות לאומי, משרתי מילואים פעילים.</li>
+          <li>התשלום נגבה בקופת האתר בהגעה (אשראי או מזומן) לפי מספר הלנים והלילות שבהזמנה. ההזמנה תופסת מסגרת אשראי; לא ניתן להזמין בכרטיס דיירקט/דביט/נטען.</li>
+          <li>אי-הגעה בלי ביטול מחויבת לפי נוהל הביטול של רשות הטבע והגנים.</li>
+        </ul>
+        <p class="source">מקור: <a id="source-link" target="_blank" rel="noopener">אתר רשות הטבע והגנים</a> · נבדק <span id="checked-date"></span>. המחיר הקובע הוא המחיר בקופה.</p>
+      </div>
+    </section>
+
+    <!-- ===== Place ===== -->
+    <section role="tabpanel" id="panel-place" aria-labelledby="tab-place" hidden>
+
+      <div class="card">
+        <h2>נגישות</h2>
+        <p><strong>החניון הצפוני (שלנו):</strong> הונגשו חניה, שירותים, מקלחות, פינת פיקניק ושביל לאזור הקמת האוהלים. יש 2 תאי שירותי נכים.</p>
+        <p class="muted"><strong>לידיעה — החניון הדרומי:</strong> הונגשו חניה, שירותים, מקלחות, פינת פיקניק, שתי חושות ושבילים.</p>
+        <p class="hint">מלווה לאדם עם מוגבלות פטור מתשלום בלינת שטח (בעל התעודה משלם מחיר מלא). נכה צה"ל ומלווה — 38 ₪ ללילה. עגלות להובלת ציוד זמינות בהפקדת תעודה מזהה.</p>
+      </div>
+
+      <div class="card">
+        <h2>שעות</h2>
+        <dl class="facts">
+          <dt>כניסה לחניון</dt><dd>15:00 עד 19:00 לכל המאוחר. כניסה רק עם הזמנה מאושרת.</dd>
+          <dt>פינוי ביום העזיבה</dt><dd>עד 12:00. מחיר הלינה הוא עד 12:00 ביום העזיבה.</dd>
+          <dt>להישאר אחרי 12:00</dt><dd>אפשר עד סגירת האתר ב-17:00, בתוספת 50% מדמי כניסת יום (לכל הלנים).</dd>
+          <dt>הגעה מוקדמת</dt><dd>לאתר (לא לחניון), לפי מקום פנוי ובתוספת תשלום. מנויי מטמון — 50% מדמי כניסת יום.</dd>
+          <dt>איחור בכניסה/יציאה</dt><dd>תוספת 50%; אחרי 18:00 — תוספת 100%.</dd>
+          <dt>מקסימום</dt><dd>6 לילות ברצף.</dd>
+          <dt>מקלחות חמות</dt><dd>18:00 בערב עד 09:00 בבוקר.</dd>
+        </dl>
+      </div>
+
+      <div class="card">
+        <h2>מה יש בחניון הצפוני</h2>
+        <ul class="facilities">
+          <li>מקלחות — 7 לנשים, 4 לגברים</li>
+          <li>שירותים — 10 לנשים, 8 לגברים</li>
+          <li>שירותי נכים — 2</li>
+          <li>כיורים לשטיפת כלים — 5</li>
+          <li>משטח עבודה — 1</li>
+          <li>מקררים — 3 · מקפיאים — 2</li>
+          <li>ברזיות מים לשתייה — 7 · מֵקָרים — 2</li>
+          <li>נקודות טעינה לטלפונים — 20</li>
+          <li>ספסלים ושולחנות פיקניק — 80</li>
+          <li>סככות צל בחוף הרחצה — 2</li>
+          <li>עמדות לאיסוף גחלים — 15</li>
+          <li>תאורת שטח</li>
+          <li>מנגל — מותר, בציוד עצמי</li>
+          <li>חוף רחצה מוכרז עם מציל עד 15/10</li>
+        </ul>
+        <p class="hint">השכרת מזרן — 12 ₪ ללילה (לפי המלאי). <strong>אין פלטות לשבת בחניון הצפוני</strong> — הן רק בדרומי.</p>
+      </div>
+
+      <div class="card">
+        <h2>כדאי לדעת לפני שמגיעים</h2>
+        <ul class="rules">
+          <li>אין כניסה לכלבים.</li>
+          <li>אין חשמל — אסור למתוח כבלים ומאריכים. אסור להפעיל גנרטורים.</li>
+          <li>אסור להשמיע מוזיקה או להפעיל הגברה.</li>
+          <li>אסור להדליק מדורות. מנגל — כן.</li>
+          <li>אסור להכניס בקבוקי זכוכית, ובלוני גז מעל 10 ק"ג.</li>
+          <li>אסור לקשור חבלים ולמתוח כבלים בין העצים.</li>
+          <li>החניון לא שומר מקום מוגדר — תפוסה בלבד. שווה להגיע יחד.</li>
+          <li>יש להפקיד תעודה מזהה בהגעה.</li>
+          <li>אין לינה על החוף. רחצה רק בחוף המוכרז ובשעות ההצלה.</li>
+          <li>במזג אוויר סוער לא ניתן להגיע ללינה מטעמי בטיחות.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>איך מגיעים ויצירת קשר</h2>
+        <p>כ-5 ק"מ צפונית לנהריה. מכביש 4 — פנייה ראשונה שמאלה אחרי קיבוץ גשר הזיו (בין ק"מ 245 ל-246).<br>
+          בוויז: <strong>חניון לילה גן לאומי אכזיב וחוף אכזיב</strong></p>
+        <p>טלפון החניון: <a href="tel:049823263">04-9823263</a> · מוקד: <a href="tel:*3639">3639*</a><br>
+          דוא"ל: <a href="mailto:gl-achziv-h@npa.org.il">gl-achziv-h@npa.org.il</a></p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    מחשבון לא רשמי שנבנה עבור הקבוצה. המחירים מאתר רשות הטבע והגנים (נבדק <span class="checked"></span>) — המחיר הקובע הוא המחיר בקופה.
+  </footer>
+
+  <script src="prices.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
