@@ -16,7 +16,7 @@ function tipStore() {
            updateTip: () => {}, updateComment: () => {}, now: () => '30/09/2026 12:00' };
 }
 const regStore = { all: () => [], put() {}, remove() {}, hash: () => '', now: () => '', nowMs: () => 0 };
-let ts = tipStore(), oldBackend = false, dropNext = 0, calls = [];
+let ts = tipStore(), oldBackend = false, dropNext = 0, calls = [], delay = 0, offline = false;
 function seed() {
   ts = tipStore();
   const t = (id, category, title, text, author) => ts.addTip({ id, status: ST.approved, category, title, text, author: author || '',
@@ -38,6 +38,8 @@ const approve = (rows, id) => { rows.find(r => +r.id === id).status = ST.approve
   await page.route('https://script.google.com/**', async (route) => {
     const req = route.request(), body = req.method() === 'POST' ? JSON.parse(req.postData()) : { action: 'summary' };
     calls.push(body.action);
+    if (offline && body.action !== 'summary') return route.abort();
+    if (delay) await new Promise(r => setTimeout(r, delay));
     let res;
     if (oldBackend && /^(tips|submitTip|submitComment)$/.test(body.action)) res = { ok: false, error: 'bad_request' };
     else res = JSON.parse(JSON.stringify(ctx.route(body, body.action === 'summary' ? regStore : null, ts)));
@@ -48,12 +50,12 @@ const approve = (rows, id) => { rows.find(r => +r.id === id).status = ST.approve
   const text = (sel) => page.locator(sel).innerText();
   const noHScroll = async (where) => assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'horizontal scroll: ' + where);
 
-  // ---- loads only when the tab opens; list, search, category, collapsed comments ----
+  // ---- prefetched in the background, so the tab is ready before it is opened ----
   await page.goto(url);
-  await page.waitForTimeout(300);
-  assert.ok(!calls.includes('tips'), 'tips loaded before the tab was opened');
+  await page.waitForFunction(() => document.querySelector('#tip-1'), null, { timeout: 5000 });
+  assert.ok(await page.isHidden('#panel-tips'), 'prefetch should not switch tabs');
   await page.click('#tab-tips');
-  await page.waitForSelector('#tip-1');
+  assert.ok(await page.isVisible('#tip-1'));
   assert.strictEqual(await text('#tips-count'), '2 טיפים.');
   assert.strictEqual(await page.locator('#tip-1 .clist li:visible').count(), 3);
   await page.click('#tip-1 .more');
@@ -78,11 +80,15 @@ const approve = (rows, id) => { rows.find(r => +r.id === id).status = ST.approve
   assert.strictEqual(await page.inputValue('#ct-1'), 'יתדות מתכת ארוכות');
   await noHScroll('similar');
 
-  // ---- comment: submit (first reply dropped by "Google") → pending → approve → visible ----
-  dropNext = 1;
+  // ---- comment: shown at once while the server is slow, and the first reply is dropped by "Google" ----
+  delay = 1500; dropNext = 1;
+  const t0 = Date.now();
   await page.click('#cf-1 button[type=submit]');
-  await page.waitForSelector('#tip-1 .clist li.pending');
+  await page.waitForSelector('#tip-1 .clist li.pending .sending', { timeout: 300 });
+  assert.ok(Date.now() - t0 < 600, 'the comment waited for the server');
   assert.ok((await text('#tip-1 .comments > .msg')).includes('נשלחה'));
+  await page.waitForFunction(() => /ממתין לאישור/.test(document.querySelector('#tip-1 .clist li.pending').textContent), null, { timeout: 15000 });
+  delay = 0;
   assert.strictEqual(ts.comments().filter(c => c.text === 'יתדות מתכת ארוכות').length, 1, 'retry made a duplicate comment');
 
   // ---- tip: validation, submit (reply dropped twice) → "sent from this device" → approve → visible ----
@@ -98,8 +104,9 @@ const approve = (rows, id) => { rows.find(r => +r.id === id).status = ST.approve
   await page.fill('#tip-author', 'אבי');
   dropNext = 2;
   await page.click('#tip-form button[type=submit]');
-  await page.waitForSelector('#tips-mine .pending');
+  await page.waitForSelector('#tips-mine .pending', { timeout: 300 });
   assert.ok((await text('#tip-msg')).includes('נשלח'));
+  await page.waitForFunction(() => /ממתין לאישור/.test(document.getElementById('tips-mine').textContent), null, { timeout: 15000 });
   const mineTips = ts.tips().filter(t => t.title === 'צל בחוף');
   assert.strictEqual(mineTips.length, 1, 'retry made a duplicate tip');
   assert.strictEqual(mineTips[0].status, ST.pending);
@@ -122,6 +129,36 @@ const approve = (rows, id) => { rows.find(r => +r.id === id).status = ST.approve
   assert.ok((await text('#tip-1 .clist')).includes('יתדות מתכת ארוכות'));
   assert.strictEqual(await text('#tips-count'), '3 טיפים.');
   await noHScroll('approved');
+
+  // ---- the cached copy shows at once while the server is slow ----
+  delay = 3000;
+  await page.reload();
+  await page.waitForSelector('#tip-1', { timeout: 800 });
+  assert.ok(await page.evaluate(() => !document.getElementById('group-card').hidden), 'group table waited for the server');
+  delay = 0;
+  await page.waitForTimeout(3500);
+
+  // ---- outbox: offline send survives a reload and is sent on the next visit, once ----
+  offline = true;
+  await page.click('#tip-2 .add-cmt');
+  await page.fill('#ct-2', 'נשלח בלי רשת');
+  await page.click('#cf-2 button[type=submit]');
+  await page.waitForSelector('#tip-2 li.pending .sending');
+  await page.waitForTimeout(1500);
+  offline = false;
+  await page.reload(); await page.waitForSelector('#tip-2');
+  assert.ok(await page.isVisible('#tip-2 li.pending'), 'unsent comment lost on reload');
+  await page.waitForFunction(() => /ממתין לאישור/.test(document.querySelector('#tip-2 li.pending').textContent), null, { timeout: 15000 });
+  assert.strictEqual(ts.comments().filter(c => c.text === 'נשלח בלי רשת').length, 1);
+
+  // ---- an error a resend cannot fix: shown, and removable ----
+  ts.tips().find(t => +t.id === 2).status = ST.hidden;     // hidden in the sheet after the page loaded
+  await page.click('#tip-2 .add-cmt');
+  await page.fill('#ct-2', 'על טיפ שהוסתר');
+  await page.click('#cf-2 button[type=submit]');
+  await page.waitForSelector('#tip-2 .failed', { timeout: 15000 });
+  await page.click('#tip-2 .drop');
+  assert.ok(!(await text('#tip-2')).includes('על טיפ שהוסתר'));
 
   // ---- the live script before the tips version: calm message, no form ----
   oldBackend = true;

@@ -384,7 +384,8 @@
   function api(body, attempt) {
     attempt = attempt || 1;
     return fetch(C.apiUrl, { method: body ? 'POST' : 'GET', headers: body ? { 'Content-Type': 'text/plain;charset=utf-8' } : undefined,
-                             body: body ? JSON.stringify(body) : undefined })
+                             body: body ? JSON.stringify(body) : undefined,
+                             keepalive: !!body })       // a send still completes if the page is closed
       .then(function (r) { return r.json(); })
       .catch(function () {
         if (attempt >= 4) return { ok: false, error: 'network' };
@@ -422,8 +423,11 @@
   }
   function busy(on) { document.querySelectorAll('#reg-form button').forEach(function (b) { b.disabled = on; }); }
 
-  function renderGroup(sum) {
+  // The group table is shown at once from this browser's last copy, then replaced by the fresh one.
+  var SUM_KEY = 'achziv-summary-cache';
+  function renderGroup(sum, cached) {
     if (!sum || !sum.ok) return;
+    if (!cached) try { localStorage.setItem(SUM_KEY, JSON.stringify(sum)); } catch (e) { /* ignore */ }
     if (sum.names) {
       names = sum.names;
       document.getElementById('reg-names').innerHTML = names.map(function (n) { return '<option value="' + esc(n) + '">'; }).join('');
@@ -579,11 +583,12 @@
         signedIn = null;
         document.getElementById('reg-keep').hidden = true;
         regMsg('ההרשמה בוטלה.', 'good');
-        if (res.summary) renderGroup(res.summary); else api(null).then(renderGroup);
+        if (res.summary) renderGroup(res.summary); else api(null).then(function (s) { renderGroup(s); });
       });
     });
 
-    api(null).then(renderGroup);
+    try { renderGroup(JSON.parse(localStorage.getItem(SUM_KEY)), true); } catch (e) { /* no copy yet */ }
+    api(null).then(function (s) { renderGroup(s); });
   }
 
   renderPriceTable();

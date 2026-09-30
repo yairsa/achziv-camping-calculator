@@ -20,6 +20,7 @@ Static RTL site on GitHub Pages (`main` = live, about 1 minute after a push; no 
 ## Site
 - Prices live only in `prices.js`, taken from parks.org.il. Dates display day-first; storage is ISO.
 - In RTL, "06/10–07/10" displays reversed. Write ranges as "06/10 עד 07/10".
+- **Fast on the client; the server works in the background** (Yair, 30/09/2026). Show the browser's cached copy at once, then refresh in the background. Prefetch data a tab will need. A submission appears at once and goes into a localStorage outbox, which is retried and resumed on the next visit. Only waits that need the server's verdict stay, such as a registration's code check. `tips.js` is the reference.
 - Public by design: registered family names and people per night. Never prices per family, codes, or calculator details.
 
 ## Work queue
