@@ -2,7 +2,8 @@
 // backend/Code.gs running in Node's vm (the Google URL is mocked, so nothing reaches the live sheet).
 // The welcome tour on the first visit, each tab's tour once on first opening, every step's target on screen and
 // neither under a fixed bar nor under its own bubble, skip remembered, ? replays; the share menu, and the share
-// modal once after the first registration only. Plan: docs/tour-plan.md §4.4.
+// modal once after the first registration only;
+// texts edited in the sheet's הדרכה tab. Plan: docs/tour-plan.md §4.4, §5.3.
 // Needs playwright-core (PLAYWRIGHT_CORE=<path>, default: the website repo's copy) and installed Chrome (CHROME=<path>).
 const assert = require('assert'), fs = require('fs'), vm = require('vm'), path = require('path'), crypto = require('crypto');
 const { chromium } = require(process.env.PLAYWRIGHT_CORE || 'C:/YairSahar_Business/ParentingUpClose_Website/node_modules/playwright-core');
@@ -15,6 +16,8 @@ const reg = { all: () => rows, put: (r) => { if (!rows.includes(r)) rows.push(r)
   hash: (u, p) => crypto.createHash('sha256').update(u + '|' + p).digest('hex'), now: () => '30/09/2026 12:00', nowMs: () => Date.now() };
 const ts = { tips: () => [], comments: () => [], gear: () => [], addTip() {}, addComment() {}, addGear() {},
   updateTip() {}, updateComment() {}, updateGear() {}, now: () => '30/09/2026 12:00' };
+// the sheet's הדרכה tab: null = the old script, which answers `tour` with bad_request
+let tourRows = null;
 
 const url = 'file:///' + path.resolve(__dirname, '../index.html').replace(/\\/g, '/');
 const errors = [];
@@ -34,6 +37,7 @@ const errors = [];
       let res;
       if (/^(summary|save|load|delete)$/.test(body.action)) res = ctx.route(body, reg);
       else if (/^(tips|gear)$/.test(body.action)) res = ctx.route(body, null, ts);
+      else if (body.action === 'tour' && tourRows) res = ctx.route(body, null, { tour: () => tourRows });
       else res = { ok: false, error: 'bad_request' };
       route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' },
         body: JSON.stringify(JSON.parse(JSON.stringify(res))) });
@@ -110,6 +114,9 @@ const errors = [];
   assert.strictEqual((await seen(page)).welcome, 1);
   await page.reload(); await page.waitForTimeout(800);
   assert.ok(!(await open(page)), 'the welcome tour ran twice');
+  // the old script answers `tour` with bad_request: nothing cached, the built-in text stays
+  await page.waitForTimeout(2500);
+  assert.strictEqual(await page.evaluate(() => localStorage.getItem('achziv-tour-texts')), null, 'cached a bad_request');
   // the permanent note, on every tab (the tab tours marked seen, so they stay out of the way here)
   await page.evaluate(() => localStorage.setItem('achziv-tour-v1', JSON.stringify({ welcome: 1, gear: 1, acts: 1, tips: 1 })));
   for (const t of ['calc', 'place', 'gear', 'acts', 'tips']) {
@@ -227,6 +234,33 @@ const errors = [];
   assert.ok(rows.length >= 2, 'the second family was not saved');
   await page.waitForTimeout(400);
   assert.ok(await page.isHidden('#share-dlg'), 'the modal a second time');
+
+  // ---- texts edited in the sheet (docs/tour-plan.md §5.3): the next tour shows them, the open one keeps its text ----
+  tourRows = JSON.parse(JSON.stringify(ctx.tourSeedRows_())).map(r => ({ tour: r[0], step: r[1], key: r[2], title: r[3], text: r[4] }));
+  tourRows[0].title = 'שלום מהגיליון';
+  tourRows[0].text = 'פסקה ראשונה\nשורה שנייה\n\n**מודגש** ואז <b>לא HTML</b>';
+  tourRows[1].title = ''; tourRows[1].text = '';                      // cleared: the built-in text
+  page = await visitor('none');
+  await page.goto(url);
+  await waitTour(page);
+  assert.strictEqual(await page.innerText('#tour-title'), 'ברוכים הבאים!', 'the first tour waited for the server');
+  await page.waitForFunction(() => localStorage.getItem('achziv-tour-texts'), null, { timeout: 8000 });
+  assert.strictEqual(await page.innerText('#tour-title'), 'ברוכים הבאים!', 'the open tour changed mid-way');
+  await page.keyboard.press('Escape');
+  await page.click('#tour-help'); await waitTour(page);
+  assert.strictEqual(await page.innerText('#tour-title'), 'שלום מהגיליון');
+  const html = await page.innerHTML('#tour-text');
+  assert.strictEqual(html, '<p>פסקה ראשונה<br>שורה שנייה</p><p><strong>מודגש</strong> ואז &lt;b&gt;לא HTML&lt;/b&gt;</p>', html);
+  await checkStep(page, 'sheet text');
+  await page.click('#tour-next'); await settled(page);
+  assert.strictEqual(await page.innerText('#tour-title'), 'חלקי האתר', 'a cleared cell did not fall back');
+  assert.ok((await page.innerText('#tour-text')).startsWith('כאן עוברים בין החלקים'));
+  await page.keyboard.press('Escape');
+  // the next visit shows the cached sheet text at once
+  await page.evaluate(() => localStorage.removeItem('achziv-tour-v1'));
+  await page.reload(); await waitTour(page);
+  assert.strictEqual(await page.innerText('#tour-title'), 'שלום מהגיליון', 'the cached text was not used');
+  await page.keyboard.press('Escape');
 
   assert.deepStrictEqual(errors, []);
   await browser.close();

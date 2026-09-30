@@ -43,3 +43,12 @@ Tips and comments land in two tabs of the **registration** sheet, **טיפים**
 - **Fix a typo or category:** just edit the cell. Categories are a dropdown.
 - **Email alerts:** **מארגנים → הפעלת התראות**, once. Google then asks for the email and trigger permissions. Every 2 hours the script checks, and if something *new* arrived it sends you one email listing everything waiting. If nothing new arrived, there's no email, so an item you leave waiting on purpose doesn't nag you.
 - **Limits:** a title of up to 60 characters, a tip of up to 400, a comment of up to 300. When 200 items are waiting, new submissions are refused until you clear some.
+
+## Guided tours (הדרכה) — editing the bubbles
+
+Every tour bubble's title and text is in the **הדרכה** tab of the **registration** sheet. The script creates the tab, filled with the site's current texts, the first time the site asks for them (or when you run **מארגנים → הפעלת התראות**).
+
+- **Edit:** change **כותרת** or **טקסט**. The site picks it up within about 5 minutes, the next time a visitor opens a tour (a tour already open doesn't change mid-way).
+- **Format:** plain text. An empty line (Ctrl+Enter twice inside the cell) starts a new paragraph, and `**like this**` is bold. HTML is shown as plain text, not run.
+- **Back to the original:** clear the cell. An empty **כותרת** or **טקסט** shows the site's built-in text, so a bubble is never empty.
+- **Don't change** **סיור** or **מפתח**: they tie a row to its step, and where its arrow points stays in the site's code. A row with an unknown key is ignored, so adding or removing steps isn't possible from the sheet.

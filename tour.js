@@ -1,7 +1,7 @@
 // Guided tours: a bubble with an arrow pointing at the real element, which is lit up on a dimmed page.
 // The welcome tour runs on the first visit; each tab's tour runs the first time that tab opens (after the welcome
 // tour closes). Each is shown once, finished or skipped, remembered in localStorage. The ? button replays the
-// current tab's tour. The tours are data, below. ?notour in the URL, or window.ACHZIV_NOTOUR, turns them off
+// current tab's tour. The tours are data, below; their texts are in tour-texts.js. ?notour in the URL, or window.ACHZIV_NOTOUR, turns them off
 // (the other e2e tests set it). Plan: docs/tour-plan.md.
 (function () {
   var KEY = 'achziv-tour-v1';
@@ -9,64 +9,68 @@
   function $(id) { return document.getElementById(id); }
   function h2of(id) { var e = $(id); return e && e.closest('.card').querySelector('h2'); }
 
-  var ABOUT = '<p><strong>לידיעתכם:</strong> זה אתר לא רשמי ומייעץ בלבד, שבנה אחד מחברי הקבוצה בשביל הקבוצה. ' +
-    'הוא לא קשור לרשות הטבע והגנים או לחניון, ולא מתחייב לדבר. המחיר הקובע הוא המחיר בקופה. ט.ל.ח. ' +
-    'השתמשו בו אם הוא עוזר לכם.</p>' +
-    '<p><strong>פרטיות:</strong> לא נאספים פרטים אישיים (לא טלפון, לא מייל ולא תעודת זהות). רשימת הציוד נשמרת רק ' +
-    'בדפדפן שלכם. הרשמה שומרת רק את השם שבחרתם, מספר הלנים והתאריכים, כדי לספור כמה נהיה.</p>';
-
-  // step: { target: selector or function (none = a centred bubble), title, text (HTML), top: scroll to the page top
-  // first (for the fixed bars and the header) }
+  // Each step: its text's key in tour-texts.js (TOUR_TEXTS_), and where the arrow points: target, a selector or a
+  // function (none = a centred bubble); top: scroll to the page top first (for the fixed bars and the header).
+  // The text itself is in tour-texts.js, and Yair can edit it in the sheet's הדרכה tab (docs/tour-plan.md §5).
   var TOURS = {
     welcome: { tab: 'calc', steps: [
-      { title: 'ברוכים הבאים!', text: '<p>האתר עוזר לקבוצה להתארגן לקמפינג באכזיב: חישוב עלות הלינה, מידע על המקום, ' +
-        'רשימת ציוד, פעילויות וטיפים. סיור קצר, פחות מדקה.</p>' + ABOUT },
-      { target: '.tabs', top: true, title: 'חלקי האתר',
-        text: 'כאן עוברים בין החלקים: המחשבון, מידע על המקום, רשימת ציוד, פעילויות וטיפים מהקבוצה.' },
-      { target: function () { return h2of('base-main'); }, title: '1. מי מגיע?',
-        text: 'סמנו כמה מבוגרים וילדים מגיעים. יש לכם הנחה (סטודנטים, מילואים, אזרחים ותיקים ועוד)? פתחו את "יש לכם הנחה" וספרו אותם שם.' },
-      { target: function () { return h2of('periods'); }, title: '2. מתי?',
-        text: 'בוחרים תאריך הגעה ותאריך עזיבה. מגיעים רק לחלק מהזמן, או בהפסקות? "הוספת תקופה" מפצלת את השהייה.' },
-      { target: function () { return h2of('result'); }, title: '3. כמה זה עולה',
-        text: 'העלות מתעדכנת מיד בזמן שממלאים: מחיר רגיל ומחיר עם הנחה קבוצתית.' },
-      { target: '#open-prices', top: true, title: 'מחירון',
-        text: 'המחירון המלא, מאתר רשות הטבע והגנים.' },
-      { target: function () { return h2of('reg-form'); }, title: '4. שמירת ההרשמה (לא חובה)',
-        text: 'רוצים שהקבוצה תדע שאתם מגיעים? שמרו את מה שמילאתם, עם שם משפחה וקוד שתבחרו. עם אותו שם וקוד אפשר לעדכן, לבטל ולהצטרף לפעילויות.' },
-      { target: '#share-btn', top: true, title: 'שיתוף עם חברים',
-        text: 'מכירים עוד משפחות מהקבוצה? שלחו להן את האתר. הסיור הזה חוזר בכל זמן בכפתור ?.' }
+      { key: 'hello' },
+      { key: 'tabs', target: '.tabs', top: true },
+      { key: 'who', target: function () { return h2of('base-main'); } },
+      { key: 'when', target: function () { return h2of('periods'); } },
+      { key: 'cost', target: function () { return h2of('result'); } },
+      { key: 'prices', target: '#open-prices', top: true },
+      { key: 'register', target: function () { return h2of('reg-form'); } },
+      { key: 'share', target: '#share-btn', top: true }
     ] },
     gear: { tab: 'gear', steps: [
-      { target: '#gear-bar .seg', title: 'רשימת ציוד',
-        text: '"בחירת פריטים" מציגה את כל מה שכדאי להביא. "הרשימה שלי" מציגה את מה שבחרתם.' },
-      { target: '#gear-q', title: 'חיפוש וסינון',
-        text: 'מחפשים פריט, או מסננים לפי תגית.' },
-      { target: '#gear-basic', title: 'הפריטים הבסיסיים',
-        text: 'לחיצה אחת מוסיפה לרשימה שלכם את כל הפריטים הבסיסיים.' },
-      { target: '#gear-view-mine', title: 'אורזים',
-        text: 'ב"הרשימה שלי" מסמנים מה כבר ארוז ורואים כמה נשאר. משם אפשר גם לשלוח את הרשימה בוואטסאפ. הרשימה נשמרת רק בדפדפן הזה.' },
-      { target: function () { return h2of('gear-form'); }, title: 'חסר פריט?',
-        text: 'הוסיפו אותו לרשימה שלכם. הוא יישלח גם למארגן, שיחליט אם להוסיף אותו לרשימה הכללית.' }
+      { key: 'views', target: '#gear-bar .seg' },
+      { key: 'search', target: '#gear-q' },
+      { key: 'basic', target: '#gear-basic' },
+      { key: 'pack', target: '#gear-view-mine' },
+      { key: 'add', target: function () { return h2of('gear-form'); } }
     ] },
     acts: { tab: 'acts', ready: '#acts-list .arow', steps: [
-      { target: '#acts-bar .seg', title: 'פעילויות',
-        text: 'פעילויות שמשפחות בקבוצה מתכננות. רואים אותן ברשימה לפי ימים, או בלוח שבועי.' },
-      { target: '#acts-q', title: 'חיפוש וסינון',
-        text: 'חיפוש, וסינון לפי יום ולפי קהל: לכולם, למבוגרים או לילדים.' },
-      { target: '#acts-list .arow', title: 'פרטים והצטרפות',
-        text: 'לחיצה על פעילות פותחת את הפרטים. משם מצטרפים, עם השם והקוד של ההרשמה.' },
-      { target: '#acts-add', title: 'הוספת פעילות',
-        text: 'משפחה רשומה יכולה להוסיף פעילות משלה.' }
+      { key: 'views', target: '#acts-bar .seg' },
+      { key: 'search', target: '#acts-q' },
+      { key: 'details', target: '#acts-list .arow' },
+      { key: 'add', target: '#acts-add' }
     ] },
     tips: { tab: 'tips', ready: '#tips-tools', steps: [
-      { target: '#panel-tips .card h2', title: 'טיפים מהקבוצה',
-        text: 'טיפים שחברי הקבוצה כתבו: ציוד, לינה, אוכל, ילדים ועוד.' },
-      { target: '#tips-q', title: 'חיפוש',
-        text: 'חיפוש בטיפים, וסינון לפי קטגוריה.' },
-      { target: '#tips-write-btn', title: 'כתיבת טיפ',
-        text: 'יש לכם טיפ? כתבו אותו כאן. הוא יופיע באתר אחרי אישור של המארגן.' }
+      { key: 'intro', target: '#panel-tips .card h2' },
+      { key: 'search', target: '#tips-q' },
+      { key: 'write', target: '#tips-write-btn' }
     ] }
   };
+
+  // ---------- the texts: the sheet's copy (cached in this browser) over the built-in one ----------
+  // A cell left empty in the sheet falls back to the built-in text, and a row whose key is unknown is ignored.
+  // The sheet's copy is fetched once per visit, after the page settles; a tour already open keeps its text.
+  var TEXTS_KEY = 'achziv-tour-texts';
+  function sheetTexts() { try { return JSON.parse(localStorage.getItem(TEXTS_KEY)) || []; } catch (e) { return []; } }
+  function textsFor(n) {
+    var own = {}, over = {};
+    TOUR_TEXTS_.forEach(function (r) { if (r.tour === n) own[r.key] = r; });
+    sheetTexts().forEach(function (r) { if (r && r.tour === n && own[r.key]) over[r.key] = r; });
+    return function (key) {
+      var o = over[key] || {}, d = own[key] || { title: '', text: '' };
+      return { title: String(o.title || '').trim() || d.title, text: String(o.text || '').trim() || d.text };
+    };
+  }
+  function refreshTexts() {
+    if (!window.CampApi) return;
+    window.CampApi.api({ action: 'tour' }).then(function (res) {
+      if (!res || !res.ok || !Array.isArray(res.steps)) return;   // the old script answers bad_request: keep what we have
+      try { localStorage.setItem(TEXTS_KEY, JSON.stringify(res.steps)); } catch (e) { /* ignore */ }
+    });
+  }
+  // plain text → HTML: everything escaped; a blank line starts a paragraph, a single line break stays, **...** is bold
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function render(text) {
+    return String(text).replace(/\r/g, '').trim().split(/\n\s*\n/).map(function (p) {
+      return '<p>' + esc(p.trim()).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>') + '</p>';
+    }).join('');
+  }
 
   function seen() { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } }
   function markSeen(name) {
@@ -118,7 +122,7 @@
     var s = steps[i];
     $('tour-count').textContent = (i + 1) + ' מתוך ' + steps.length;
     $('tour-title').textContent = s.title;
-    $('tour-text').innerHTML = /^<p>/.test(s.text) ? s.text : '<p>' + s.text + '</p>';
+    $('tour-text').innerHTML = render(s.text);
     $('tour-next').textContent = i === steps.length - 1 ? 'סיום' : 'הבא';
     $('tour-prev').hidden = i === 0;
     $('tour-skip').hidden = i === steps.length - 1;
@@ -219,7 +223,10 @@
     var tries = 0;
     (function go() {
       if (t.ready && !visible(document.querySelector(t.ready)) && tries++ < 40) { setTimeout(go, 150); return; }
-      steps = t.steps.filter(function (s) { return !s.target || visible(el(s)); });
+      var tx = textsFor(n);
+      steps = t.steps.filter(function (s) { return !s.target || visible(el(s)); }).map(function (s) {
+        var x = tx(s.key); return { key: s.key, target: s.target, top: s.top, title: x.title, text: x.text };
+      });
       if (!steps.length) { running = false; return; }
       if (!bub) build();
       back = document.activeElement;
@@ -252,6 +259,7 @@
   window.Tour = { start: start, next: next,
     current: function () { return running && bub && !bub.hidden && steps[at].target ? el(steps[at]) : null; } };
   $('tour-help').addEventListener('click', function () { if (!running) start(tourFor(currentTab())); });
+  setTimeout(refreshTexts, 2000);                        // after the page's own requests; the ? replay uses it too
   if (off) return;
   document.addEventListener('tabshown', function () { setTimeout(next, 0); });
   setTimeout(next, 300);

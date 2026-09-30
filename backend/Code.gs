@@ -15,6 +15,7 @@
 //   submitTip     {clientId, category, title, text, author, hp}        -> a pending tip (safe to repeat)
 //   submitComment {clientId, tipId, text, author, hp}                  -> a pending comment (safe to repeat)
 //   gear    {}                                                         -> the approved equipment list (cached)
+//   tour    {}                                                         -> the guided tours' texts from the sheet (cached)
 //   submitGear    {clientId, section, name, hp}                        -> a suggested item, pending (safe to repeat)
 //   activities {}                                                      -> active activities with who joined (cached)
 //   saveActivity   {user, pin, activity, clientId | id}                -> a new activity, or an edit by its family
@@ -35,7 +36,7 @@ function doGet() { return json_(route({ action: 'summary' }, sheetStore_())); }
 function doPost(e) {
   var req;
   try { req = JSON.parse(e.postData.contents); } catch (x) { return json_({ ok: false, error: 'bad_request' }); }
-  var cacheKey = req && { tips: TIPS_CACHE, gear: GEAR_CACHE, activities: ACTS_CACHE }[req.action];
+  var cacheKey = req && { tips: TIPS_CACHE, gear: GEAR_CACHE, activities: ACTS_CACHE, tour: TOUR_CACHE }[req.action];
   if (cacheKey) {                                     // public read: served from cache, no lock on a hit
     var hit = CacheService.getScriptCache().get(cacheKey);
     if (hit) return ContentService.createTextOutput(hit).setMimeType(ContentService.MimeType.JSON);
@@ -74,6 +75,7 @@ function route(req, store, tstore, astore) {
       case 'submitTip': return submitTip_(req, tstore);
       case 'submitComment': return submitComment_(req, tstore);
       case 'gear': return gearPublic_(tstore);
+      case 'tour': return tourPublic_(tstore);
       case 'submitGear': return submitGear_(req, tstore);
       case 'activities': return activitiesPublic_(astore);
       case 'saveActivity': return saveActivity_(req, store, astore);
@@ -786,10 +788,110 @@ function pendingDigest_(ts, seen, sheetUrl) {
            seen: { tip: nextId_(ts.tips()) - 1, comment: nextId_(ts.comments()) - 1, gear: nextId_(gearRows_(ts)) - 1 } };
 }
 
+// ---------- guided tour texts (docs/tour-plan.md \u00a75) ----------
+// Tab \u05d4\u05d3\u05e8\u05db\u05d4: one row per tour bubble, created with the site's own texts from tour-texts.js. Yair edits \u05db\u05d5\u05ea\u05e8\u05ea
+// and \u05d8\u05e7\u05e1\u05d8; \u05de\u05e4\u05ea\u05d7 ties the row to its step in tour.js. The site keeps its built-in text for an empty cell and
+// ignores a row whose tour or key it does not know, so a cleared cell never leaves an empty bubble.
+// Guided tour texts: every bubble's title and text - shared by the site and the backend (docs/tour-plan.md \u00a75).
+// The site loads it with a <script> tag, so a tour shows its text at once, even before the server answers.
+// backend/build.py inlines it into Code.gs at `//@include tour-texts.js`, and the script writes these rows into
+// the sheet's \u05d4\u05d3\u05e8\u05db\u05d4 tab the first time it creates the tab. After that Yair edits \u05db\u05d5\u05ea\u05e8\u05ea and \u05d8\u05e7\u05e1\u05d8 there; a cell left
+// empty falls back to the text here. `key` ties a row to its step in tour.js (where the arrow points stays code).
+//
+// Text format: plain text. A blank line starts a new paragraph, **...** is bold. No HTML: tour.js escapes it.
+
+// The name each tour carries in the sheet's \u05e1\u05d9\u05d5\u05e8 column.
+var TOUR_NAMES_ = { welcome: '\u05e4\u05ea\u05d9\u05d7\u05d4', gear: '\u05e6\u05d9\u05d5\u05d3', acts: '\u05e4\u05e2\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea', tips: '\u05d8\u05d9\u05e4\u05d9\u05dd' };
+
+var TOUR_TEXTS_ = [
+  { tour: 'welcome', key: 'hello', title: '\u05d1\u05e8\u05d5\u05db\u05d9\u05dd \u05d4\u05d1\u05d0\u05d9\u05dd!',
+    text: '\u05d4\u05d0\u05ea\u05e8 \u05e2\u05d5\u05d6\u05e8 \u05dc\u05e7\u05d1\u05d5\u05e6\u05d4 \u05dc\u05d4\u05ea\u05d0\u05e8\u05d2\u05df \u05dc\u05e7\u05de\u05e4\u05d9\u05e0\u05d2 \u05d1\u05d0\u05db\u05d6\u05d9\u05d1: \u05d7\u05d9\u05e9\u05d5\u05d1 \u05e2\u05dc\u05d5\u05ea \u05d4\u05dc\u05d9\u05e0\u05d4, \u05de\u05d9\u05d3\u05e2 \u05e2\u05dc \u05d4\u05de\u05e7\u05d5\u05dd, ' +
+      '\u05e8\u05e9\u05d9\u05de\u05ea \u05e6\u05d9\u05d5\u05d3, \u05e4\u05e2\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea \u05d5\u05d8\u05d9\u05e4\u05d9\u05dd. \u05e1\u05d9\u05d5\u05e8 \u05e7\u05e6\u05e8, \u05e4\u05d7\u05d5\u05ea \u05de\u05d3\u05e7\u05d4.\n\n' +
+      '**\u05dc\u05d9\u05d3\u05d9\u05e2\u05ea\u05db\u05dd:** \u05d6\u05d4 \u05d0\u05ea\u05e8 \u05dc\u05d0 \u05e8\u05e9\u05de\u05d9 \u05d5\u05de\u05d9\u05d9\u05e2\u05e5 \u05d1\u05dc\u05d1\u05d3, \u05e9\u05d1\u05e0\u05d4 \u05d0\u05d7\u05d3 \u05de\u05d7\u05d1\u05e8\u05d9 \u05d4\u05e7\u05d1\u05d5\u05e6\u05d4 \u05d1\u05e9\u05d1\u05d9\u05dc \u05d4\u05e7\u05d1\u05d5\u05e6\u05d4. ' +
+      '\u05d4\u05d5\u05d0 \u05dc\u05d0 \u05e7\u05e9\u05d5\u05e8 \u05dc\u05e8\u05e9\u05d5\u05ea \u05d4\u05d8\u05d1\u05e2 \u05d5\u05d4\u05d2\u05e0\u05d9\u05dd \u05d0\u05d5 \u05dc\u05d7\u05e0\u05d9\u05d5\u05df, \u05d5\u05dc\u05d0 \u05de\u05ea\u05d7\u05d9\u05d9\u05d1 \u05dc\u05d3\u05d1\u05e8. \u05d4\u05de\u05d7\u05d9\u05e8 \u05d4\u05e7\u05d5\u05d1\u05e2 \u05d4\u05d5\u05d0 \u05d4\u05de\u05d7\u05d9\u05e8 \u05d1\u05e7\u05d5\u05e4\u05d4. \u05d8.\u05dc.\u05d7. ' +
+      '\u05d4\u05e9\u05ea\u05de\u05e9\u05d5 \u05d1\u05d5 \u05d0\u05dd \u05d4\u05d5\u05d0 \u05e2\u05d5\u05d6\u05e8 \u05dc\u05db\u05dd.\n\n' +
+      '**\u05e4\u05e8\u05d8\u05d9\u05d5\u05ea:** \u05dc\u05d0 \u05e0\u05d0\u05e1\u05e4\u05d9\u05dd \u05e4\u05e8\u05d8\u05d9\u05dd \u05d0\u05d9\u05e9\u05d9\u05d9\u05dd (\u05dc\u05d0 \u05d8\u05dc\u05e4\u05d5\u05df, \u05dc\u05d0 \u05de\u05d9\u05d9\u05dc \u05d5\u05dc\u05d0 \u05ea\u05e2\u05d5\u05d3\u05ea \u05d6\u05d4\u05d5\u05ea). \u05e8\u05e9\u05d9\u05de\u05ea \u05d4\u05e6\u05d9\u05d5\u05d3 \u05e0\u05e9\u05de\u05e8\u05ea \u05e8\u05e7 ' +
+      '\u05d1\u05d3\u05e4\u05d3\u05e4\u05df \u05e9\u05dc\u05db\u05dd. \u05d4\u05e8\u05e9\u05de\u05d4 \u05e9\u05d5\u05de\u05e8\u05ea \u05e8\u05e7 \u05d0\u05ea \u05d4\u05e9\u05dd \u05e9\u05d1\u05d7\u05e8\u05ea\u05dd, \u05de\u05e1\u05e4\u05e8 \u05d4\u05dc\u05e0\u05d9\u05dd \u05d5\u05d4\u05ea\u05d0\u05e8\u05d9\u05db\u05d9\u05dd, \u05db\u05d3\u05d9 \u05dc\u05e1\u05e4\u05d5\u05e8 \u05db\u05de\u05d4 \u05e0\u05d4\u05d9\u05d4.' },
+  { tour: 'welcome', key: 'tabs', title: '\u05d7\u05dc\u05e7\u05d9 \u05d4\u05d0\u05ea\u05e8',
+    text: '\u05db\u05d0\u05df \u05e2\u05d5\u05d1\u05e8\u05d9\u05dd \u05d1\u05d9\u05df \u05d4\u05d7\u05dc\u05e7\u05d9\u05dd: \u05d4\u05de\u05d7\u05e9\u05d1\u05d5\u05df, \u05de\u05d9\u05d3\u05e2 \u05e2\u05dc \u05d4\u05de\u05e7\u05d5\u05dd, \u05e8\u05e9\u05d9\u05de\u05ea \u05e6\u05d9\u05d5\u05d3, \u05e4\u05e2\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea \u05d5\u05d8\u05d9\u05e4\u05d9\u05dd \u05de\u05d4\u05e7\u05d1\u05d5\u05e6\u05d4.' },
+  { tour: 'welcome', key: 'who', title: '1. \u05de\u05d9 \u05de\u05d2\u05d9\u05e2?',
+    text: '\u05e1\u05de\u05e0\u05d5 \u05db\u05de\u05d4 \u05de\u05d1\u05d5\u05d2\u05e8\u05d9\u05dd \u05d5\u05d9\u05dc\u05d3\u05d9\u05dd \u05de\u05d2\u05d9\u05e2\u05d9\u05dd. \u05d9\u05e9 \u05dc\u05db\u05dd \u05d4\u05e0\u05d7\u05d4 (\u05e1\u05d8\u05d5\u05d3\u05e0\u05d8\u05d9\u05dd, \u05de\u05d9\u05dc\u05d5\u05d0\u05d9\u05dd, \u05d0\u05d6\u05e8\u05d7\u05d9\u05dd \u05d5\u05ea\u05d9\u05e7\u05d9\u05dd \u05d5\u05e2\u05d5\u05d3)? \u05e4\u05ea\u05d7\u05d5 \u05d0\u05ea "\u05d9\u05e9 \u05dc\u05db\u05dd \u05d4\u05e0\u05d7\u05d4" \u05d5\u05e1\u05e4\u05e8\u05d5 \u05d0\u05d5\u05ea\u05dd \u05e9\u05dd.' },
+  { tour: 'welcome', key: 'when', title: '2. \u05de\u05ea\u05d9?',
+    text: '\u05d1\u05d5\u05d7\u05e8\u05d9\u05dd \u05ea\u05d0\u05e8\u05d9\u05da \u05d4\u05d2\u05e2\u05d4 \u05d5\u05ea\u05d0\u05e8\u05d9\u05da \u05e2\u05d6\u05d9\u05d1\u05d4. \u05de\u05d2\u05d9\u05e2\u05d9\u05dd \u05e8\u05e7 \u05dc\u05d7\u05dc\u05e7 \u05de\u05d4\u05d6\u05de\u05df, \u05d0\u05d5 \u05d1\u05d4\u05e4\u05e1\u05e7\u05d5\u05ea? "\u05d4\u05d5\u05e1\u05e4\u05ea \u05ea\u05e7\u05d5\u05e4\u05d4" \u05de\u05e4\u05e6\u05dc\u05ea \u05d0\u05ea \u05d4\u05e9\u05d4\u05d9\u05d9\u05d4.' },
+  { tour: 'welcome', key: 'cost', title: '3. \u05db\u05de\u05d4 \u05d6\u05d4 \u05e2\u05d5\u05dc\u05d4',
+    text: '\u05d4\u05e2\u05dc\u05d5\u05ea \u05de\u05ea\u05e2\u05d3\u05db\u05e0\u05ea \u05de\u05d9\u05d3 \u05d1\u05d6\u05de\u05df \u05e9\u05de\u05de\u05dc\u05d0\u05d9\u05dd: \u05de\u05d7\u05d9\u05e8 \u05e8\u05d2\u05d9\u05dc \u05d5\u05de\u05d7\u05d9\u05e8 \u05e2\u05dd \u05d4\u05e0\u05d7\u05d4 \u05e7\u05d1\u05d5\u05e6\u05ea\u05d9\u05ea.' },
+  { tour: 'welcome', key: 'prices', title: '\u05de\u05d7\u05d9\u05e8\u05d5\u05df',
+    text: '\u05d4\u05de\u05d7\u05d9\u05e8\u05d5\u05df \u05d4\u05de\u05dc\u05d0, \u05de\u05d0\u05ea\u05e8 \u05e8\u05e9\u05d5\u05ea \u05d4\u05d8\u05d1\u05e2 \u05d5\u05d4\u05d2\u05e0\u05d9\u05dd.' },
+  { tour: 'welcome', key: 'register', title: '4. \u05e9\u05de\u05d9\u05e8\u05ea \u05d4\u05d4\u05e8\u05e9\u05de\u05d4 (\u05dc\u05d0 \u05d7\u05d5\u05d1\u05d4)',
+    text: '\u05e8\u05d5\u05e6\u05d9\u05dd \u05e9\u05d4\u05e7\u05d1\u05d5\u05e6\u05d4 \u05ea\u05d3\u05e2 \u05e9\u05d0\u05ea\u05dd \u05de\u05d2\u05d9\u05e2\u05d9\u05dd? \u05e9\u05de\u05e8\u05d5 \u05d0\u05ea \u05de\u05d4 \u05e9\u05de\u05d9\u05dc\u05d0\u05ea\u05dd, \u05e2\u05dd \u05e9\u05dd \u05de\u05e9\u05e4\u05d7\u05d4 \u05d5\u05e7\u05d5\u05d3 \u05e9\u05ea\u05d1\u05d7\u05e8\u05d5. \u05e2\u05dd \u05d0\u05d5\u05ea\u05d5 \u05e9\u05dd \u05d5\u05e7\u05d5\u05d3 \u05d0\u05e4\u05e9\u05e8 \u05dc\u05e2\u05d3\u05db\u05df, \u05dc\u05d1\u05d8\u05dc \u05d5\u05dc\u05d4\u05e6\u05d8\u05e8\u05e3 \u05dc\u05e4\u05e2\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea.' },
+  { tour: 'welcome', key: 'share', title: '\u05e9\u05d9\u05ea\u05d5\u05e3 \u05e2\u05dd \u05d7\u05d1\u05e8\u05d9\u05dd',
+    text: '\u05de\u05db\u05d9\u05e8\u05d9\u05dd \u05e2\u05d5\u05d3 \u05de\u05e9\u05e4\u05d7\u05d5\u05ea \u05de\u05d4\u05e7\u05d1\u05d5\u05e6\u05d4? \u05e9\u05dc\u05d7\u05d5 \u05dc\u05d4\u05df \u05d0\u05ea \u05d4\u05d0\u05ea\u05e8. \u05d4\u05e1\u05d9\u05d5\u05e8 \u05d4\u05d6\u05d4 \u05d7\u05d5\u05d6\u05e8 \u05d1\u05db\u05dc \u05d6\u05de\u05df \u05d1\u05db\u05e4\u05ea\u05d5\u05e8 ?.' },
+
+  { tour: 'gear', key: 'views', title: '\u05e8\u05e9\u05d9\u05de\u05ea \u05e6\u05d9\u05d5\u05d3',
+    text: '"\u05d1\u05d7\u05d9\u05e8\u05ea \u05e4\u05e8\u05d9\u05d8\u05d9\u05dd" \u05de\u05e6\u05d9\u05d2\u05d4 \u05d0\u05ea \u05db\u05dc \u05de\u05d4 \u05e9\u05db\u05d3\u05d0\u05d9 \u05dc\u05d4\u05d1\u05d9\u05d0. "\u05d4\u05e8\u05e9\u05d9\u05de\u05d4 \u05e9\u05dc\u05d9" \u05de\u05e6\u05d9\u05d2\u05d4 \u05d0\u05ea \u05de\u05d4 \u05e9\u05d1\u05d7\u05e8\u05ea\u05dd.' },
+  { tour: 'gear', key: 'search', title: '\u05d7\u05d9\u05e4\u05d5\u05e9 \u05d5\u05e1\u05d9\u05e0\u05d5\u05df',
+    text: '\u05de\u05d7\u05e4\u05e9\u05d9\u05dd \u05e4\u05e8\u05d9\u05d8, \u05d0\u05d5 \u05de\u05e1\u05e0\u05e0\u05d9\u05dd \u05dc\u05e4\u05d9 \u05ea\u05d2\u05d9\u05ea.' },
+  { tour: 'gear', key: 'basic', title: '\u05d4\u05e4\u05e8\u05d9\u05d8\u05d9\u05dd \u05d4\u05d1\u05e1\u05d9\u05e1\u05d9\u05d9\u05dd',
+    text: '\u05dc\u05d7\u05d9\u05e6\u05d4 \u05d0\u05d7\u05ea \u05de\u05d5\u05e1\u05d9\u05e4\u05d4 \u05dc\u05e8\u05e9\u05d9\u05de\u05d4 \u05e9\u05dc\u05db\u05dd \u05d0\u05ea \u05db\u05dc \u05d4\u05e4\u05e8\u05d9\u05d8\u05d9\u05dd \u05d4\u05d1\u05e1\u05d9\u05e1\u05d9\u05d9\u05dd.' },
+  { tour: 'gear', key: 'pack', title: '\u05d0\u05d5\u05e8\u05d6\u05d9\u05dd',
+    text: '\u05d1"\u05d4\u05e8\u05e9\u05d9\u05de\u05d4 \u05e9\u05dc\u05d9" \u05de\u05e1\u05de\u05e0\u05d9\u05dd \u05de\u05d4 \u05db\u05d1\u05e8 \u05d0\u05e8\u05d5\u05d6 \u05d5\u05e8\u05d5\u05d0\u05d9\u05dd \u05db\u05de\u05d4 \u05e0\u05e9\u05d0\u05e8. \u05de\u05e9\u05dd \u05d0\u05e4\u05e9\u05e8 \u05d2\u05dd \u05dc\u05e9\u05dc\u05d5\u05d7 \u05d0\u05ea \u05d4\u05e8\u05e9\u05d9\u05de\u05d4 \u05d1\u05d5\u05d5\u05d0\u05d8\u05e1\u05d0\u05e4. \u05d4\u05e8\u05e9\u05d9\u05de\u05d4 \u05e0\u05e9\u05de\u05e8\u05ea \u05e8\u05e7 \u05d1\u05d3\u05e4\u05d3\u05e4\u05df \u05d4\u05d6\u05d4.' },
+  { tour: 'gear', key: 'add', title: '\u05d7\u05e1\u05e8 \u05e4\u05e8\u05d9\u05d8?',
+    text: '\u05d4\u05d5\u05e1\u05d9\u05e4\u05d5 \u05d0\u05d5\u05ea\u05d5 \u05dc\u05e8\u05e9\u05d9\u05de\u05d4 \u05e9\u05dc\u05db\u05dd. \u05d4\u05d5\u05d0 \u05d9\u05d9\u05e9\u05dc\u05d7 \u05d2\u05dd \u05dc\u05de\u05d0\u05e8\u05d2\u05df, \u05e9\u05d9\u05d7\u05dc\u05d9\u05d8 \u05d0\u05dd \u05dc\u05d4\u05d5\u05e1\u05d9\u05e3 \u05d0\u05d5\u05ea\u05d5 \u05dc\u05e8\u05e9\u05d9\u05de\u05d4 \u05d4\u05db\u05dc\u05dc\u05d9\u05ea.' },
+
+  { tour: 'acts', key: 'views', title: '\u05e4\u05e2\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea',
+    text: '\u05e4\u05e2\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea \u05e9\u05de\u05e9\u05e4\u05d7\u05d5\u05ea \u05d1\u05e7\u05d1\u05d5\u05e6\u05d4 \u05de\u05ea\u05db\u05e0\u05e0\u05d5\u05ea. \u05e8\u05d5\u05d0\u05d9\u05dd \u05d0\u05d5\u05ea\u05df \u05d1\u05e8\u05e9\u05d9\u05de\u05d4 \u05dc\u05e4\u05d9 \u05d9\u05de\u05d9\u05dd, \u05d0\u05d5 \u05d1\u05dc\u05d5\u05d7 \u05e9\u05d1\u05d5\u05e2\u05d9.' },
+  { tour: 'acts', key: 'search', title: '\u05d7\u05d9\u05e4\u05d5\u05e9 \u05d5\u05e1\u05d9\u05e0\u05d5\u05df',
+    text: '\u05d7\u05d9\u05e4\u05d5\u05e9, \u05d5\u05e1\u05d9\u05e0\u05d5\u05df \u05dc\u05e4\u05d9 \u05d9\u05d5\u05dd \u05d5\u05dc\u05e4\u05d9 \u05e7\u05d4\u05dc: \u05dc\u05db\u05d5\u05dc\u05dd, \u05dc\u05de\u05d1\u05d5\u05d2\u05e8\u05d9\u05dd \u05d0\u05d5 \u05dc\u05d9\u05dc\u05d3\u05d9\u05dd.' },
+  { tour: 'acts', key: 'details', title: '\u05e4\u05e8\u05d8\u05d9\u05dd \u05d5\u05d4\u05e6\u05d8\u05e8\u05e4\u05d5\u05ea',
+    text: '\u05dc\u05d7\u05d9\u05e6\u05d4 \u05e2\u05dc \u05e4\u05e2\u05d9\u05dc\u05d5\u05ea \u05e4\u05d5\u05ea\u05d7\u05ea \u05d0\u05ea \u05d4\u05e4\u05e8\u05d8\u05d9\u05dd. \u05de\u05e9\u05dd \u05de\u05e6\u05d8\u05e8\u05e4\u05d9\u05dd, \u05e2\u05dd \u05d4\u05e9\u05dd \u05d5\u05d4\u05e7\u05d5\u05d3 \u05e9\u05dc \u05d4\u05d4\u05e8\u05e9\u05de\u05d4.' },
+  { tour: 'acts', key: 'add', title: '\u05d4\u05d5\u05e1\u05e4\u05ea \u05e4\u05e2\u05d9\u05dc\u05d5\u05ea',
+    text: '\u05de\u05e9\u05e4\u05d7\u05d4 \u05e8\u05e9\u05d5\u05de\u05d4 \u05d9\u05db\u05d5\u05dc\u05d4 \u05dc\u05d4\u05d5\u05e1\u05d9\u05e3 \u05e4\u05e2\u05d9\u05dc\u05d5\u05ea \u05de\u05e9\u05dc\u05d4.' },
+
+  { tour: 'tips', key: 'intro', title: '\u05d8\u05d9\u05e4\u05d9\u05dd \u05de\u05d4\u05e7\u05d1\u05d5\u05e6\u05d4',
+    text: '\u05d8\u05d9\u05e4\u05d9\u05dd \u05e9\u05d7\u05d1\u05e8\u05d9 \u05d4\u05e7\u05d1\u05d5\u05e6\u05d4 \u05db\u05ea\u05d1\u05d5: \u05e6\u05d9\u05d5\u05d3, \u05dc\u05d9\u05e0\u05d4, \u05d0\u05d5\u05db\u05dc, \u05d9\u05dc\u05d3\u05d9\u05dd \u05d5\u05e2\u05d5\u05d3.' },
+  { tour: 'tips', key: 'search', title: '\u05d7\u05d9\u05e4\u05d5\u05e9',
+    text: '\u05d7\u05d9\u05e4\u05d5\u05e9 \u05d1\u05d8\u05d9\u05e4\u05d9\u05dd, \u05d5\u05e1\u05d9\u05e0\u05d5\u05df \u05dc\u05e4\u05d9 \u05e7\u05d8\u05d2\u05d5\u05e8\u05d9\u05d4.' },
+  { tour: 'tips', key: 'write', title: '\u05db\u05ea\u05d9\u05d1\u05ea \u05d8\u05d9\u05e4',
+    text: '\u05d9\u05e9 \u05dc\u05db\u05dd \u05d8\u05d9\u05e4? \u05db\u05ea\u05d1\u05d5 \u05d0\u05d5\u05ea\u05d5 \u05db\u05d0\u05df. \u05d4\u05d5\u05d0 \u05d9\u05d5\u05e4\u05d9\u05e2 \u05d1\u05d0\u05ea\u05e8 \u05d0\u05d7\u05e8\u05d9 \u05d0\u05d9\u05e9\u05d5\u05e8 \u05e9\u05dc \u05d4\u05de\u05d0\u05e8\u05d2\u05df.' }
+];
+
+var TOUR_TAB = '\u05d4\u05d3\u05e8\u05db\u05d4';
+var TOUR_HEAD = ['\u05e1\u05d9\u05d5\u05e8', '\u05de\u05e1\u05e4\u05e8 \u05e6\u05e2\u05d3', '\u05de\u05e4\u05ea\u05d7', '\u05db\u05d5\u05ea\u05e8\u05ea', '\u05d8\u05e7\u05e1\u05d8'];
+var TOUR_COL = { tour: 0, step: 1, key: 2, title: 3, text: 4 };
+var TOUR_CACHE = 'tour-v1';
+var TOUR_TEXT_MAX = 2000;
+
+function tourSeedRows_() {
+  var n = {};
+  return TOUR_TEXTS_.map(function (r) {
+    n[r.tour] = (n[r.tour] || 0) + 1;
+    return [TOUR_NAMES_[r.tour], n[r.tour], r.key, r.title, r.text];
+  });
+}
+
+// Public: the sheet's texts for known steps, empty cells left out (the site falls back to its own text).
+function tourPublic_(ts) {
+  var byName = {}, known = {};
+  Object.keys(TOUR_NAMES_).forEach(function (id) { byName[TOUR_NAMES_[id]] = id; byName[id] = id; });
+  TOUR_TEXTS_.forEach(function (r) { known[r.tour + '/' + r.key] = true; });
+  var steps = [];
+  (ts && ts.tour ? ts.tour() : []).forEach(function (r) {
+    var tour = byName[String(r.tour).trim()], key = String(r.key).trim();
+    if (!tour || !known[tour + '/' + key]) return;
+    var s = { tour: tour, key: key };
+    var title = unguard_(r.title).trim().slice(0, 200), text = unguard_(r.text).trim().slice(0, TOUR_TEXT_MAX);
+    if (title) s.title = title;
+    if (text) s.text = text;
+    if (title || text) steps.push(s);
+  });
+  return { ok: true, steps: steps };
+}
+
 // Simple trigger: runs on every hand edit of the sheet.
 function onEdit(e) {
   var name = e && e.range ? e.range.getSheet().getName() : '';
   if (name === ACT_TABS.acts || name === ACT_TABS.joins) { CacheService.getScriptCache().remove(ACTS_CACHE); return; }
+  if (name === TOUR_TAB) { CacheService.getScriptCache().remove(TOUR_CACHE); return; }
   if (name !== TIP_TABS.tips && name !== TIP_TABS.comments && name !== GEAR_TAB) return;
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) return;          // the next edit or digest run catches up
@@ -824,6 +926,7 @@ function enableAlerts() {
   tipsStore_().tips();                       // make sure the tabs exist (\u05e6\u05d9\u05d5\u05d3 is written with the starter list)
   tipsStore_().comments();
   tipsStore_().gear();
+  tipsStore_().tour();                       // \u05d4\u05d3\u05e8\u05db\u05d4, written with the site's tour texts
   SpreadsheetApp.getUi().alert('\u05d4\u05ea\u05e8\u05d0\u05d5\u05ea \u05d4\u05d5\u05e4\u05e2\u05dc\u05d5: \u05db\u05dc \u05e9\u05e2\u05ea\u05d9\u05d9\u05dd, \u05d0\u05dd \u05d4\u05d2\u05d9\u05e2 \u05de\u05e9\u05d4\u05d5 \u05d7\u05d3\u05e9 \u05dc\u05d0\u05d9\u05e9\u05d5\u05e8, \u05d9\u05d9\u05e9\u05dc\u05d7 \u05d0\u05dc\u05d9\u05da \u05de\u05d9\u05d9\u05dc \u05d0\u05d7\u05d3 \u05e2\u05dd \u05db\u05dc \u05d4\u05de\u05de\u05ea\u05d9\u05e0\u05d9\u05dd.');
 }
 
@@ -1109,6 +1212,28 @@ function tipsStore_() {
     }
     return gearSh;
   }
+  var tourSh = null, tourRows = null;
+  function tourSheet() {
+    if (tourSh) return tourSh;
+    var fresh = !ss.getSheetByName(TOUR_TAB);
+    tourSh = tab(TOUR_TAB, TOUR_HEAD, []);
+    if (fresh) {                               // today's texts, in one write; the columns stay plain text
+      var seed = tourSeedRows_();
+      tourSh.getRange(2, 1, seed.length, TOUR_HEAD.length).setNumberFormat('@').setValues(seed).setWrap(true);
+      tourSh.setColumnWidth(TOUR_COL.title + 1, 200);
+      tourSh.setColumnWidth(TOUR_COL.text + 1, 500);
+    }
+    return tourSh;
+  }
+  function readTour() {
+    var sh = tourSheet(), n = sh.getLastRow() - 1;
+    var v = n > 0 ? sh.getRange(2, 1, n, TOUR_HEAD.length).getValues() : [];
+    return v.map(function (c) {
+      var r = {};
+      Object.keys(TOUR_COL).forEach(function (k) { r[k] = c[TOUR_COL[k]]; });
+      return r;
+    });
+  }
   function read(sh, cols, width) {
     var n = sh.getLastRow() - 1;
     var v = n > 0 ? sh.getRange(2, 1, n, width).getValues() : [];
@@ -1132,6 +1257,7 @@ function tipsStore_() {
     gear: function () { return gearRows || (gearRows = read(gearSheet(), GEAR_COL, GEAR_HEAD.length)); },
     addGear: function (r) { add(gearSheet(), store.gear(), r, GEAR_COL); },
     updateGear: function (r) { update(gearSheet(), r, GEAR_COL, GEAR_HEAD.length); },
+    tour: function () { return tourRows || (tourRows = readTour()); },
     now: function () { return new Date(); }       // a real date: the sheet shows it in its own (day-first) locale
   };
   return store;

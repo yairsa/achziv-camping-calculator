@@ -14,6 +14,7 @@
 //   submitTip     {clientId, category, title, text, author, hp}        → a pending tip (safe to repeat)
 //   submitComment {clientId, tipId, text, author, hp}                  → a pending comment (safe to repeat)
 //   gear    {}                                                         → the approved equipment list (cached)
+//   tour    {}                                                         → the guided tours' texts from the sheet (cached)
 //   submitGear    {clientId, section, name, hp}                        → a suggested item, pending (safe to repeat)
 //   activities {}                                                      → active activities with who joined (cached)
 //   saveActivity   {user, pin, activity, clientId | id}                → a new activity, or an edit by its family
@@ -34,7 +35,7 @@ function doGet() { return json_(route({ action: 'summary' }, sheetStore_())); }
 function doPost(e) {
   var req;
   try { req = JSON.parse(e.postData.contents); } catch (x) { return json_({ ok: false, error: 'bad_request' }); }
-  var cacheKey = req && { tips: TIPS_CACHE, gear: GEAR_CACHE, activities: ACTS_CACHE }[req.action];
+  var cacheKey = req && { tips: TIPS_CACHE, gear: GEAR_CACHE, activities: ACTS_CACHE, tour: TOUR_CACHE }[req.action];
   if (cacheKey) {                                     // public read: served from cache, no lock on a hit
     var hit = CacheService.getScriptCache().get(cacheKey);
     if (hit) return ContentService.createTextOutput(hit).setMimeType(ContentService.MimeType.JSON);
@@ -73,6 +74,7 @@ function route(req, store, tstore, astore) {
       case 'submitTip': return submitTip_(req, tstore);
       case 'submitComment': return submitComment_(req, tstore);
       case 'gear': return gearPublic_(tstore);
+      case 'tour': return tourPublic_(tstore);
       case 'submitGear': return submitGear_(req, tstore);
       case 'activities': return activitiesPublic_(astore);
       case 'saveActivity': return saveActivity_(req, store, astore);
@@ -552,10 +554,49 @@ function pendingDigest_(ts, seen, sheetUrl) {
            seen: { tip: nextId_(ts.tips()) - 1, comment: nextId_(ts.comments()) - 1, gear: nextId_(gearRows_(ts)) - 1 } };
 }
 
+// ---------- guided tour texts (docs/tour-plan.md §5) ----------
+// Tab הדרכה: one row per tour bubble, created with the site's own texts from tour-texts.js. Yair edits כותרת
+// and טקסט; מפתח ties the row to its step in tour.js. The site keeps its built-in text for an empty cell and
+// ignores a row whose tour or key it does not know, so a cleared cell never leaves an empty bubble.
+//@include tour-texts.js
+
+var TOUR_TAB = 'הדרכה';
+var TOUR_HEAD = ['סיור', 'מספר צעד', 'מפתח', 'כותרת', 'טקסט'];
+var TOUR_COL = { tour: 0, step: 1, key: 2, title: 3, text: 4 };
+var TOUR_CACHE = 'tour-v1';
+var TOUR_TEXT_MAX = 2000;
+
+function tourSeedRows_() {
+  var n = {};
+  return TOUR_TEXTS_.map(function (r) {
+    n[r.tour] = (n[r.tour] || 0) + 1;
+    return [TOUR_NAMES_[r.tour], n[r.tour], r.key, r.title, r.text];
+  });
+}
+
+// Public: the sheet's texts for known steps, empty cells left out (the site falls back to its own text).
+function tourPublic_(ts) {
+  var byName = {}, known = {};
+  Object.keys(TOUR_NAMES_).forEach(function (id) { byName[TOUR_NAMES_[id]] = id; byName[id] = id; });
+  TOUR_TEXTS_.forEach(function (r) { known[r.tour + '/' + r.key] = true; });
+  var steps = [];
+  (ts && ts.tour ? ts.tour() : []).forEach(function (r) {
+    var tour = byName[String(r.tour).trim()], key = String(r.key).trim();
+    if (!tour || !known[tour + '/' + key]) return;
+    var s = { tour: tour, key: key };
+    var title = unguard_(r.title).trim().slice(0, 200), text = unguard_(r.text).trim().slice(0, TOUR_TEXT_MAX);
+    if (title) s.title = title;
+    if (text) s.text = text;
+    if (title || text) steps.push(s);
+  });
+  return { ok: true, steps: steps };
+}
+
 // Simple trigger: runs on every hand edit of the sheet.
 function onEdit(e) {
   var name = e && e.range ? e.range.getSheet().getName() : '';
   if (name === ACT_TABS.acts || name === ACT_TABS.joins) { CacheService.getScriptCache().remove(ACTS_CACHE); return; }
+  if (name === TOUR_TAB) { CacheService.getScriptCache().remove(TOUR_CACHE); return; }
   if (name !== TIP_TABS.tips && name !== TIP_TABS.comments && name !== GEAR_TAB) return;
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) return;          // the next edit or digest run catches up
@@ -590,6 +631,7 @@ function enableAlerts() {
   tipsStore_().tips();                       // make sure the tabs exist (ציוד is written with the starter list)
   tipsStore_().comments();
   tipsStore_().gear();
+  tipsStore_().tour();                       // הדרכה, written with the site's tour texts
   SpreadsheetApp.getUi().alert('התראות הופעלו: כל שעתיים, אם הגיע משהו חדש לאישור, יישלח אליך מייל אחד עם כל הממתינים.');
 }
 
@@ -861,6 +903,28 @@ function tipsStore_() {
     }
     return gearSh;
   }
+  var tourSh = null, tourRows = null;
+  function tourSheet() {
+    if (tourSh) return tourSh;
+    var fresh = !ss.getSheetByName(TOUR_TAB);
+    tourSh = tab(TOUR_TAB, TOUR_HEAD, []);
+    if (fresh) {                               // today's texts, in one write; the columns stay plain text
+      var seed = tourSeedRows_();
+      tourSh.getRange(2, 1, seed.length, TOUR_HEAD.length).setNumberFormat('@').setValues(seed).setWrap(true);
+      tourSh.setColumnWidth(TOUR_COL.title + 1, 200);
+      tourSh.setColumnWidth(TOUR_COL.text + 1, 500);
+    }
+    return tourSh;
+  }
+  function readTour() {
+    var sh = tourSheet(), n = sh.getLastRow() - 1;
+    var v = n > 0 ? sh.getRange(2, 1, n, TOUR_HEAD.length).getValues() : [];
+    return v.map(function (c) {
+      var r = {};
+      Object.keys(TOUR_COL).forEach(function (k) { r[k] = c[TOUR_COL[k]]; });
+      return r;
+    });
+  }
   function read(sh, cols, width) {
     var n = sh.getLastRow() - 1;
     var v = n > 0 ? sh.getRange(2, 1, n, width).getValues() : [];
@@ -884,6 +948,7 @@ function tipsStore_() {
     gear: function () { return gearRows || (gearRows = read(gearSheet(), GEAR_COL, GEAR_HEAD.length)); },
     addGear: function (r) { add(gearSheet(), store.gear(), r, GEAR_COL); },
     updateGear: function (r) { update(gearSheet(), r, GEAR_COL, GEAR_HEAD.length); },
+    tour: function () { return tourRows || (tourRows = readTour()); },
     now: function () { return new Date(); }       // a real date: the sheet shows it in its own (day-first) locale
   };
   return store;

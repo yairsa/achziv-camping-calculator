@@ -88,17 +88,19 @@
 ### Tasks
 
 #### 5.1 Shared texts
-- [ ] `tour-texts.js`: every tour's steps as `{tour, key, title, text}` in the plain format above; `tour.js` keeps only targets by key and renders the text (escape, blank line → paragraph, `**` → bold)
-- [ ] Built-in behaviour unchanged: `tour.e2e.js` green; stamp
+- [x] `tour-texts.js`: every tour's steps as `{tour, key, title, text}` in the plain format above; `tour.js` keeps only targets by key and renders the text (escape, blank line → paragraph, `**` → bold)
+- [x] Built-in behaviour unchanged: `tour.e2e.js` green; stamp
 
 #### 5.2 Backend
-- [ ] `Code.source.gs`: `//@include tour-texts.js`; tab הדרכה seeded on first use; action `tour` → `{ok, steps:[{key,title,text}]}` with empty cells dropped; cached; the edit trigger clears the cache for this tab too
-- [ ] `backend.test.js`: seed, an edited row wins, an empty cell falls back, an unknown key is ignored; `python backend/build.py`
-- [ ] `SETUP.md`: the tab and how to edit it
+- [x] `Code.source.gs`: `//@include tour-texts.js`; tab הדרכה seeded on first use; action `tour` → `{ok, steps:[{tour,key,title,text}]}` with empty cells dropped; cached; the edit trigger clears the cache for this tab too
+  - `tour` is in each row too: keys repeat across tours (`search`, `add`). The סיור column shows a Hebrew name (`TOUR_NAMES_` in `tour-texts.js`)
+- [x] `backend.test.js`: seed, an edited row wins, an empty cell falls back, an unknown key is ignored; `python backend/build.py`
+- [x] `SETUP.md`: the tab and how to edit it
 
 #### 5.3 Site
-- [ ] Fetch `tour` in the background (after the page settles), cache in localStorage, merge over the built-in text for the next tour shown
-- [ ] `tour.e2e.js`: an edited title/text from the mocked sheet shows in the bubble; bold and paragraphs render; HTML in a cell shows as text; the old script (`bad_request`) keeps the built-in text
+- [x] Fetch `tour` in the background (after the page settles), cache in localStorage, merge over the built-in text for the next tour shown
+  - fetched 2s after load, also under `?notour` (so ? replays get it)
+- [x] `tour.e2e.js`: an edited title/text from the mocked sheet shows in the bubble; bold and paragraphs render; HTML in a cell shows as text; the old script (`bad_request`) keeps the built-in text
 
 #### 5.4 Gate and go-live
 - [ ] All 9 gates green; push; live check (built-in text, since the old script is still deployed)

@@ -460,3 +460,37 @@ console.log('gear tests passed');
   assert.strictEqual(P(ctx.route({ action: 'deleteActivity', user: 'Levi', pin: '5555', id: 2 }, reg, null, demo)).error, 'not_owner');
 }
 console.log('activities tests passed');
+
+// ---------- guided tour texts (docs/tour-plan.md §5.2) ----------
+{
+  const P = (o) => JSON.parse(JSON.stringify(o));
+  const seed = P(ctx.tourSeedRows_()), texts = P(ctx.TOUR_TEXTS_), names = P(ctx.TOUR_NAMES_);
+  // the seed is the site's text, one row per bubble, numbered from 1 within each tour
+  assert.strictEqual(seed.length, texts.length);
+  seed.forEach((r, i) => {
+    assert.deepStrictEqual([r[0], r[2], r[3], r[4]], [names[texts[i].tour], texts[i].key, texts[i].title, texts[i].text]);
+  });
+  assert.deepStrictEqual(seed.filter(r => r[0] === names.gear).map(r => r[1]), [1, 2, 3, 4, 5]);
+  const rows = seed.map(r => ({ tour: r[0], step: r[1], key: r[2], title: r[3], text: r[4] }));
+  const T = () => P(ctx.route({ action: 'tour' }, null, { tour: () => rows }));
+  // untouched: every step comes back as seeded
+  let res = T();
+  assert.ok(res.ok);
+  assert.deepStrictEqual(res.steps, texts.map(t => ({ tour: t.tour, key: t.key, title: t.title, text: t.text })));
+  // an edited row wins; an empty cell is left out (the site falls back); an empty row is dropped
+  rows[1].title = 'כותרת חדשה'; rows[1].text = 'שורה\n\nעוד **חשוב**';
+  rows[2].title = '   '; rows[3].title = ''; rows[3].text = '';
+  res = T();
+  assert.deepStrictEqual(res.steps[1], { tour: 'welcome', key: 'tabs', title: 'כותרת חדשה', text: 'שורה\n\nעוד **חשוב**' });
+  assert.deepStrictEqual(res.steps[2], { tour: 'welcome', key: 'who', text: texts[2].text });
+  assert.ok(!res.steps.some(s => s.key === 'when' && s.tour === 'welcome'));
+  // an unknown key or tour is ignored; a formula guard is removed
+  rows.push({ tour: names.gear, step: 9, key: 'nope', title: 'x', text: 'x' }, { tour: 'לא קיים', step: 1, key: 'hello', title: 'x', text: 'x' });
+  rows[4].text = "'=1+1";
+  res = T();
+  assert.strictEqual(res.steps.length, texts.length - 1);
+  assert.strictEqual(res.steps[3].text, '=1+1');
+  // a store without the tab (older mocks) answers with no steps
+  assert.deepStrictEqual(P(ctx.route({ action: 'tour' }, null, {})), { ok: true, steps: [] });
+}
+console.log('tour text tests passed');
