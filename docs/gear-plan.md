@@ -65,6 +65,9 @@ A fifth tab, **ציוד**, with two views:
 - [x] Personal items: form, shown at once, outbox to `submitGear`, merge on approval
   - the outbox sends only after a `gear` read succeeded, so the old live script is not retried every few seconds. An own item can be removed with "הסרה".
 - [x] Starter list shown instantly; cached copy, then fresh in the background
+- [x] Yair, 30/09/2026: *"List should start collapsed. Allow clear selections in general list, same as clear packed"*
+  - the general list opens folded; a section opened by hand stays open through redraws; a search or tag opens every section with a match. "הרשימה שלי" stays open (it is the packing view).
+  - "ניקוי כל הבחירות" (with a confirm) clears every pick and its packed mark; own items stay (they have their own "הסרה").
 - [x] Gate: `node tests/gear.e2e.js` (headless Chrome, 360px, mocked backend) + all other gates
   - mutation-checked: disabling the merge, or packed-to-bottom, turns it red.
 

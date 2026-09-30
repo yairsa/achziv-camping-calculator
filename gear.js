@@ -17,6 +17,7 @@
   var BASIC = 'בסיסי';
   var sections = GEAR_SECTIONS_.slice(), items = seedItems(), live = false, started = false;
   var view = 'pick', tag = '';
+  var openSecs = {};                // general list: sections opened by hand in this visit (it starts collapsed)
   function $(id) { return document.getElementById(id); }
   function say(p, text, kind) { p.textContent = text; p.className = 'msg' + (kind ? ' ' + kind : ''); }
   function clean(s) { return String(s || '').trim().replace(/\s+/g, ' '); }
@@ -118,13 +119,13 @@
       (r.note ? ' <small class="gnote">' + esc(r.note) + '</small>' : '') + '</label>' +
       (extra || '') + '</li>';
   }
-  function sectionBlock(name, lis, counter) {
-    return '<details class="gsec" open><summary><span>' + esc(name) + '</span> <small class="gcount">' + counter + '</small></summary>' +
+  function sectionBlock(name, lis, counter, open) {
+    return '<details class="gsec" data-sec="' + esc(name) + '"' + (open ? ' open' : '') + '><summary><span>' + esc(name) + '</span> <small class="gcount">' + counter + '</small></summary>' +
       '<ul class="glist">' + lis.join('') + '</ul></details>';
   }
 
   function renderPick() {
-    var s = state(), words = searchWords_($('gear-q').value);
+    var s = state(), words = searchWords_($('gear-q').value), filtering = words.length > 0 || !!tag;
     var rows = generalRows().concat(ownRows(s)), secs = allSections(rows), shown = 0, html = '';
     secs.forEach(function (sec) {
       var inSec = rows.filter(function (r) { return r.section === sec; });
@@ -135,7 +136,7 @@
       html += sectionBlock(sec, vis.map(function (r) {
         return itemRow(r, isPicked(s, r), 'gp-', r.own ? ' <span class="b">' + badge(r.own) + '</span>' +
           ' <button type="button" class="btn-link gdrop" data-cid="' + esc(r.own.cid) + '">הסרה</button>' : '');
-      }), picked + '/' + inSec.length);
+      }), picked + '/' + inSec.length, filtering || openSecs[sec]);   // a search opens every section it found
     });
     $('gear-pick-list').innerHTML = html;
     var total = rows.length;
@@ -153,7 +154,7 @@
       packed += done.length;
       html += sectionBlock(sec, todo.concat(done).map(function (r) {
         return itemRow(r, !!s.packed[r.key], 'gm-', r.own ? ' <span class="b">' + badge(r.own) + '</span>' : '');
-      }), done.length + '/' + inSec.length);
+      }), done.length + '/' + inSec.length, true);
     });
     $('gear-mine-list').innerHTML = html;
     var n = rows.length;
@@ -226,6 +227,20 @@
       tag = tag === t ? '' : t;
       renderTags(); renderPick();
     });
+    // remember what was opened by hand, so a redraw keeps it (not while a search opens everything)
+    $('gear-pick-list').addEventListener('toggle', function (e) {
+      var d = e.target;
+      if (!d.classList || !d.classList.contains('gsec') || searchWords_($('gear-q').value).length || tag) return;
+      openSecs[d.getAttribute('data-sec')] = d.open;
+    }, true);
+    $('gear-clear').addEventListener('click', function () {
+      if (!window.confirm('לנקות את כל הבחירות מהרשימה הכללית? פריטים אישיים שהוספתם נשארים.')) return;
+      var s = state();
+      s.picked = {};
+      Object.keys(s.packed).forEach(function (k) { if (k.charAt(0) === 'g') delete s.packed[k]; });
+      save(s); render();
+      say($('gear-pick-msg'), 'הבחירות נוקו.', 'good');
+    });
     $('gear-basic').addEventListener('click', function () {
       var s = state(), n = 0;
       items.forEach(function (it) { if (it.tags.indexOf(BASIC) >= 0 && !s.picked[it.id]) { s.picked[it.id] = 1; n++; } });
@@ -291,6 +306,7 @@
                       body: { action: 'submitGear', clientId: cid, section: sec, name: name, hp: $('gear-hp').value } });
       save(s);
       $('gear-new-name').value = '';
+      openSecs[sec] = true;                                   // show where it landed
       render();
       say(msg, '"' + name + '" נוסף לרשימה שלכם, ונשלח למארגן כהצעה לרשימה הכללית.', 'good');
       flush();

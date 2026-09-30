@@ -52,18 +52,23 @@ let ts = store(), oldBackend = false, dropNext = 0, delay = 0, calls = [];
   await page.click('#tab-gear');
   assert.strictEqual(await text('#gear-count'), SEED.length + ' פריטים ברשימה הכללית.');
   assert.strictEqual(await text('#gear-view-mine'), 'הרשימה שלי (0)');
+  const openSecs = () => page.locator('#gear-pick-list details[open]').count();
+  assert.strictEqual(await openSecs(), 0, 'the general list should start collapsed');
   await noHScroll('pick');
 
   // ---- search and tag filter ----
   await page.fill('#gear-q', 'פנס');
   assert.ok((await text('#gear-count')).startsWith('נמצאו 3 מתוך'), await text('#gear-count'));
+  assert.strictEqual(await openSecs(), await page.locator('#gear-pick-list .gsec').count(), 'a search should open what it found');
   await page.fill('#gear-q', '');
+  assert.strictEqual(await openSecs(), 0, 'clearing the search should fold back');
   await page.click('.chip[data-tag="תינוקות"]');
   assert.strictEqual(await page.locator('#gear-pick-list li').count(), SEED.filter(r => r[4].includes('תינוקות')).length);
   await page.click('.chip[data-tag="תינוקות"]');                // off again
   assert.strictEqual(await page.locator('#gear-pick-list li').count(), SEED.length);
 
   // ---- pick: two by hand, then every basic item ----
+  await page.click('#gear-pick-list .gsec[data-sec="אוהלים ולינה"] summary');
   await page.check('#gp-g1');                                     // אוהל
   await page.check('#gp-g6');                                     // משאבה (not basic)
   assert.strictEqual(await text('#gear-view-mine'), 'הרשימה שלי (2)');
@@ -72,6 +77,7 @@ let ts = store(), oldBackend = false, dropNext = 0, delay = 0, calls = [];
   await page.click('#gear-basic');
   assert.strictEqual(await text('#gear-view-mine'), 'הרשימה שלי (' + (basic + 1) + ')');
   assert.ok((await text('#gear-pick-msg')).includes('נוספו ' + (basic - 1)));
+  assert.strictEqual(await openSecs(), 1, 'a redraw should keep the section opened by hand');
   await page.uncheck('#gp-g6');
   assert.strictEqual(await text('#gear-view-mine'), 'הרשימה שלי (' + basic + ')');
 
@@ -138,6 +144,13 @@ let ts = store(), oldBackend = false, dropNext = 0, delay = 0, calls = [];
   await page.click('#gear-reset');
   assert.ok((await text('#gear-progress-text')).startsWith('ארוזים 0 מתוך'));
 
+  // ---- clear every selection in the general list (confirm accepted) ----
+  await page.click('#gear-view-pick');
+  await page.click('#gear-clear');
+  assert.strictEqual(await text('#gear-view-mine'), 'הרשימה שלי (0)');
+  assert.strictEqual(await page.locator('#gear-pick-list input:checked').count(), 0);
+  assert.ok((await text('#gear-pick-msg')).includes('נוקו'));
+
   // ---- first visit, slow server: the starter list at once ----
   await page.evaluate(() => localStorage.clear());
   delay = 3000;
@@ -164,7 +177,7 @@ let ts = store(), oldBackend = false, dropNext = 0, delay = 0, calls = [];
   assert.ok(await page.locator('#gear-pick-list .sending').count() === 1, 'the own item should wait, still sending');
   await page.reload();
   await page.click('#tab-gear');
-  assert.ok((await text('#gear-pick-list')).includes('מחכה בתור'), 'unsent own item lost on reload');
+  assert.ok((await page.textContent('#gear-pick-list')).includes('מחכה בתור'), 'unsent own item lost on reload');
   // the new script arrives: the waiting item is sent on the next visit
   oldBackend = false;
   await page.reload();
@@ -172,8 +185,9 @@ let ts = store(), oldBackend = false, dropNext = 0, delay = 0, calls = [];
   await page.waitForFunction(() => /הוצע למארגן/.test(document.getElementById('gear-pick-list').textContent), null, { timeout: 15000 });
   assert.strictEqual(ts.gear().filter(g => g.name === 'מחכה בתור').length, 1);
   // an own item can be removed from the list
+  await page.click('#gear-pick-list .gsec[data-sec="שונות"] summary');
   await page.click('#gear-pick-list .gdrop');
-  assert.ok(!(await text('#gear-pick-list')).includes('מחכה בתור'));
+  assert.ok(!(await page.textContent('#gear-pick-list')).includes('מחכה בתור'));
 
   assert.deepStrictEqual(errors, []);
   await browser.close();
