@@ -15,6 +15,11 @@
 //   submitComment {clientId, tipId, text, author, hp}                  → a pending comment (safe to repeat)
 //   gear    {}                                                         → the approved equipment list (cached)
 //   submitGear    {clientId, section, name, hp}                        → a suggested item, pending (safe to repeat)
+//   activities {}                                                      → active activities with who joined (cached)
+//   saveActivity   {user, pin, activity, clientId | id}                → a new activity, or an edit by its family
+//   deleteActivity {user, pin, id}                                     → its family cancels it
+//   join  {user, pin, id, count}  /  leave {user, pin, id}             → set / clear this family's participants
+//   (every activity write needs a registered family, and answers with the fresh list)
 
 var SHEET_NAME = 'הרשמות';
 var HEAD = ['שם משתמש', 'שם להצגה', 'עודכן', 'לנים (מקסימום)', 'לנים לפי לילה', 'מחיר מלא', 'מחיר קבוצתי',
@@ -29,7 +34,7 @@ function doGet() { return json_(route({ action: 'summary' }, sheetStore_())); }
 function doPost(e) {
   var req;
   try { req = JSON.parse(e.postData.contents); } catch (x) { return json_({ ok: false, error: 'bad_request' }); }
-  var cacheKey = req && { tips: TIPS_CACHE, gear: GEAR_CACHE }[req.action];
+  var cacheKey = req && { tips: TIPS_CACHE, gear: GEAR_CACHE, activities: ACTS_CACHE }[req.action];
   if (cacheKey) {                                     // public read: served from cache, no lock on a hit
     var hit = CacheService.getScriptCache().get(cacheKey);
     if (hit) return ContentService.createTextOutput(hit).setMimeType(ContentService.MimeType.JSON);
@@ -38,13 +43,15 @@ function doPost(e) {
   lock.waitLock(10000);
   try {
     if (cacheKey) {
-      var out = JSON.stringify(route(req, null, tipsStore_()));
+      var out = JSON.stringify(route(req, null, tipsStore_(), activitiesStore_()));
       try { CacheService.getScriptCache().put(cacheKey, out, 300); } catch (x) { /* too big to cache: still served */ }
       return ContentService.createTextOutput(out).setMimeType(ContentService.MimeType.JSON);
     }
     var tipAction = req && (req.action === 'submitTip' || req.action === 'submitComment' || req.action === 'submitGear');
-    var res = route(req, tipAction ? null : sheetStore_(), tipAction ? tipsStore_() : null);
-    if (res.ok && (req.action === 'save' || req.action === 'delete')) {
+    var actAction = !!(req && ACT_WRITES[req.action]);
+    var res = route(req, tipAction ? null : sheetStore_(), tipAction ? tipsStore_() : null, actAction ? activitiesStore_() : null);
+    if (res.ok && actAction) CacheService.getScriptCache().remove(ACTS_CACHE);
+    if (res.ok && (req.action === 'save' || req.action === 'delete' || actAction)) {
       try { syncOrganizers_(); } catch (x) { /* the organizers' copy must never break a registration */ }
     }
     return json_(res);
@@ -54,8 +61,8 @@ function doPost(e) {
 function json_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 
 // ---------- pure logic (store is injected so it can be tested outside Google) ----------
-// store = registrations, tstore = tips and comments; each action touches only its own.
-function route(req, store, tstore) {
+// store = registrations, tstore = tips, comments and gear, astore = activities.
+function route(req, store, tstore, astore) {
   try {
     switch (req && req.action) {
       case 'save': return save_(req, store);
@@ -67,6 +74,11 @@ function route(req, store, tstore) {
       case 'submitComment': return submitComment_(req, tstore);
       case 'gear': return gearPublic_(tstore);
       case 'submitGear': return submitGear_(req, tstore);
+      case 'activities': return activitiesPublic_(astore);
+      case 'saveActivity': return saveActivity_(req, store, astore);
+      case 'deleteActivity': return deleteActivity_(req, store, astore);
+      case 'join': return join_(req, store, astore);
+      case 'leave': return leave_(req, store, astore);
       default: return { ok: false, error: 'bad_request' };
     }
   } catch (x) {
@@ -171,7 +183,8 @@ function summary_(store) {
 // and anything organizers add further left) are theirs: the script never writes there, and a
 // cancelled family keeps its row (status "בוטל") so a recorded payment is never lost.
 var ORG_PROP = 'ORG_SHEET_ID';
-var ORG_TABS = { families: 'משפחות', nights: 'לילות', summary: 'סיכום' };
+var ORG_TABS = { families: 'משפחות', nights: 'לילות', summary: 'סיכום', acts: 'פעילויות' };
+var ORG_ACT_HEAD = ['מתי', 'נושא', 'משפחה מארגנת', 'קהל', 'משתתפים', 'מקומות', 'מי הצטרף'];
 var ORG_HEAD = ['שם המשפחה', 'סטטוס', 'עודכן', 'תקופות', 'לנים לפי לילה', 'מבוגרים (14+)', 'ילדים (5 עד 13)',
                 'פעוטות (עד 5)', 'הנחות', 'מחיר מלא', 'מחיר קבוצתי'];
 var ORG_MANUAL = ['שולם (₪)', 'הערות מארגנים'];
@@ -277,10 +290,15 @@ function syncOrganizers_() {
   ]);
   sum.getRange(1, 1, 6, 1).setFontWeight('bold');
 
+  var act = tab(ORG_TABS.acts), acts = organizerActivities_(activitiesPublic_(activitiesStore_()));
+  act.clearContents();
+  act.getRange(1, 1, 1, ORG_ACT_HEAD.length).setValues([ORG_ACT_HEAD]).setFontWeight('bold');
+  if (acts.length) act.getRange(2, 1, acts.length, ORG_ACT_HEAD.length).setValues(acts);
+
   // drop the empty default tab a new spreadsheet comes with
+  var ours = Object.keys(ORG_TABS).map(function (k) { return ORG_TABS[k]; });
   ss.getSheets().forEach(function (s) {
-    if (s.getName() !== ORG_TABS.families && s.getName() !== ORG_TABS.nights && s.getName() !== ORG_TABS.summary &&
-        s.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(s);
+    if (ours.indexOf(s.getName()) < 0 && s.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(s);
   });
   return true;
 }
@@ -522,6 +540,7 @@ function pendingDigest_(ts, seen, sheetUrl) {
 // Simple trigger: runs on every hand edit of the sheet.
 function onEdit(e) {
   var name = e && e.range ? e.range.getSheet().getName() : '';
+  if (name === ACT_TABS.acts || name === ACT_TABS.joins) { CacheService.getScriptCache().remove(ACTS_CACHE); return; }
   if (name !== TIP_TABS.tips && name !== TIP_TABS.comments && name !== GEAR_TAB) return;
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) return;          // the next edit or digest run catches up
@@ -557,6 +576,170 @@ function enableAlerts() {
   tipsStore_().comments();
   tipsStore_().gear();
   SpreadsheetApp.getUi().alert('התראות הופעלו: כל שעתיים, אם הגיע משהו חדש לאישור, יישלח אליך מייל אחד עם כל הממתינים.');
+}
+
+// ---------- activities (docs/activities-plan.md) ----------
+// Two tabs in this (private) sheet, created on the first write. A registered family (its name + code) adds an
+// activity and it is public at once; only that family edits or cancels it. Yair can hide one: status הוסתר.
+// Families join with a number of participants. Capacity is checked here, under the script lock, so two
+// last joins cannot both succeed. Every write is safe to repeat: a new activity carries a client id, and a
+// join sets the family's count rather than adding to it.
+var ACT_TABS = { acts: 'פעילויות', joins: 'הצטרפויות' };
+var ACT_HEAD = ['מספר', 'סטטוס', 'משפחה מארגנת', 'נושא', 'תיאור', 'התחלה', 'סיום', 'קהל', 'מגיל', 'עד גיל',
+                'מקומות', 'חובה להביא', 'מומלץ להביא', 'נוצר', 'עודכן', 'מזהה שליחה'];
+var ACT_COL = { id: 0, status: 1, owner: 2, topic: 3, description: 4, start: 5, end: 6, tag: 7, ageFrom: 8, ageTo: 9,
+                capacity: 10, required: 11, suggested: 12, created: 13, updated: 14, clientId: 15 };
+var JOIN_HEAD = ['פעילות', 'משפחה', 'משתתפים', 'עודכן'];
+var JOIN_COL = { actId: 0, family: 1, count: 2, updated: 3 };
+var AST = { active: 'פעיל', hidden: 'הוסתר', cancelled: 'בוטל' };
+var ACT_STATUSES = [AST.active, AST.hidden, AST.cancelled];
+var ACT_TAGS = ['לכולם', 'מבוגרים', 'ילדים'];
+var ACT_LIMITS = { topic: 60, description: 600, gear: 200, capacity: 500, join: 30 };
+var TRIP = { from: '2026-10-06', to: '2026-10-13' };   // the days an activity may fall on
+var MAX_ACTS_PER_FAMILY = 30;
+var ACTS_CACHE = 'acts-v1';
+var ACT_WRITES = { saveActivity: 1, deleteActivity: 1, join: 1, leave: 1 };
+
+// "2026-10-06T10:00", 24-hour clock, inside the trip.
+function actTime_(v) {
+  var s = String(v == null ? '' : v), m = /^(\d{4}-\d{2}-\d{2})T([01]\d|2[0-3]):[0-5]\d$/.exec(s);
+  if (!m || m[1] < TRIP.from || m[1] > TRIP.to) fail_('bad_time');
+  return s;
+}
+function actAge_(v) {
+  if (v === '' || v == null) return '';
+  var n = Number(v);
+  if (!(n >= 0 && n <= 99) || n !== Math.floor(n)) fail_('bad_age');
+  return n;
+}
+function actGear_(s) { return s ? tipText_(s, 0, ACT_LIMITS.gear) : ''; }
+// The registered family behind a name + code (the registration's own lockout applies).
+function actFamily_(req, store) {
+  var user = checkCreds_(req), row = findRow_(store, user);
+  if (!row) fail_('not_registered');
+  verify_(store, row, String(req.pin));
+  return { key: user, name: String(row.family).replace(/^'/, '') };
+}
+function isOwner_(a, fam) { return normUser_(unguard_(a.owner)) === fam.key; }
+function actJoins_(as, id) {
+  return as.joins().filter(function (j) { return +j.actId === id && Math.floor(+j.count) > 0; });
+}
+function actTaken_(as, id) { return actJoins_(as, id).reduce(function (s, j) { return s + Math.floor(+j.count); }, 0); }
+function findAct_(as, id) {
+  id = Math.floor(Number(id)) || 0;
+  return as.acts().filter(function (a) { return +a.id === id; })[0] || null;
+}
+
+// Public: active activities, by start time. Family names and counts are public by design (as on the
+// registration list); codes, client ids and dates of writing never leave the sheet.
+function activitiesPublic_(as) {
+  var list = as.acts().filter(function (a) { return a.status === AST.active; }).map(function (a) {
+    var joined = actJoins_(as, +a.id).map(function (j) { return { family: unguard_(j.family), count: Math.floor(+j.count) }; });
+    return { id: +a.id, owner: unguard_(a.owner), topic: unguard_(a.topic), description: unguard_(a.description),
+             start: String(a.start), end: String(a.end), tag: String(a.tag),
+             ageFrom: a.ageFrom === '' ? null : +a.ageFrom, ageTo: a.ageTo === '' ? null : +a.ageTo,
+             capacity: +a.capacity || 0, required: unguard_(a.required), suggested: unguard_(a.suggested),
+             joined: joined, taken: joined.reduce(function (s, j) { return s + j.count; }, 0) };
+  });
+  list.sort(function (x, y) { return x.start < y.start ? -1 : x.start > y.start ? 1 : x.id - y.id; });
+  return { ok: true, trip: TRIP, tags: ACT_TAGS, activities: list };
+}
+function actDone_(as, extra) {
+  var out = { ok: true, activities: activitiesPublic_(as).activities };
+  Object.keys(extra || {}).forEach(function (k) { out[k] = extra[k]; });
+  return out;
+}
+
+// Create (with clientId) or edit (with id, owner only).
+function saveActivity_(req, store, as) {
+  var fam = actFamily_(req, store), a = req.activity || {};
+  var f = {
+    topic: tipText_(String(a.topic || '').replace(/\n/g, ' '), 3, ACT_LIMITS.topic),
+    description: a.description ? tipText_(a.description, 0, ACT_LIMITS.description) : '',
+    start: actTime_(a.start), end: actTime_(a.end),
+    tag: String(a.tag || ''), ageFrom: '', ageTo: '', capacity: '',
+    required: actGear_(a.required), suggested: actGear_(a.suggested)
+  };
+  if (f.end <= f.start) fail_('end_before_start');
+  if (ACT_TAGS.indexOf(f.tag) < 0) fail_('bad_tag');
+  if (f.tag === 'ילדים') {                                   // ages mean something only for kids
+    f.ageFrom = actAge_(a.ageFrom); f.ageTo = actAge_(a.ageTo);
+    if (f.ageFrom !== '' && f.ageTo !== '' && f.ageFrom > f.ageTo) fail_('bad_age');
+  }
+  if (a.capacity !== '' && a.capacity != null && +a.capacity !== 0) {
+    var cap = Number(a.capacity);
+    if (!(cap >= 1 && cap <= ACT_LIMITS.capacity) || cap !== Math.floor(cap)) fail_('bad_capacity');
+    f.capacity = cap;
+  }
+  var row;
+  if (req.id) {
+    row = findAct_(as, req.id);
+    if (!row || row.status !== AST.active) fail_('not_found');
+    if (!isOwner_(row, fam)) fail_('not_owner');
+    if (f.capacity && actTaken_(as, +row.id) > f.capacity) fail_('below_joined');
+    Object.keys(f).forEach(function (k) { row[k] = f[k]; });
+    row.updated = as.now();
+    as.updateAct(row);
+    return actDone_(as, { id: +row.id });
+  }
+  var clientId = checkClientId_(req.clientId);
+  var dup = as.acts().filter(function (x) { return x.clientId === clientId; })[0];
+  if (dup) return actDone_(as, { id: +dup.id });            // a retry: already saved
+  var mine = as.acts().filter(function (x) { return x.status === AST.active && isOwner_(x, fam); }).length;
+  if (mine >= MAX_ACTS_PER_FAMILY) fail_('busy');
+  row = { id: nextId_(as.acts()), status: AST.active, owner: safeCell_(fam.name), created: as.now(), updated: '',
+          clientId: clientId };
+  Object.keys(f).forEach(function (k) { row[k] = f[k]; });
+  as.addAct(row);
+  return actDone_(as, { id: row.id });
+}
+
+// Cancel (status בוטל: the row and its joins stay, for the record). Repeating it is fine.
+function deleteActivity_(req, store, as) {
+  var fam = actFamily_(req, store), row = findAct_(as, req.id);
+  if (!row || row.status === AST.hidden) fail_('not_found');
+  if (!isOwner_(row, fam)) fail_('not_owner');
+  if (row.status !== AST.cancelled) { row.status = AST.cancelled; row.updated = as.now(); as.updateAct(row); }
+  return actDone_(as);
+}
+
+// Sets this family's participants (not adds), so a retry cannot double-count.
+function join_(req, store, as) {
+  var fam = actFamily_(req, store), row = findAct_(as, req.id);
+  if (!row || row.status !== AST.active) fail_('not_found');
+  var n = Number(req.count);
+  if (!(n >= 1 && n <= ACT_LIMITS.join) || n !== Math.floor(n)) fail_('bad_count');
+  var id = +row.id, mine = as.joins().filter(function (j) { return +j.actId === id && normUser_(unguard_(j.family)) === fam.key; })[0];
+  var others = actTaken_(as, id) - (mine ? Math.max(0, Math.floor(+mine.count) || 0) : 0);
+  if (+row.capacity && others + n > +row.capacity) fail_('full');
+  if (mine) { mine.count = n; mine.updated = as.now(); as.updateJoin(mine); }
+  else as.addJoin({ actId: id, family: safeCell_(fam.name), count: n, updated: as.now() });
+  return actDone_(as);
+}
+
+function leave_(req, store, as) {
+  var fam = actFamily_(req, store), id = Math.floor(Number(req.id)) || 0;
+  as.joins().forEach(function (j) {
+    if (+j.actId === id && normUser_(unguard_(j.family)) === fam.key && +j.count) {
+      j.count = 0; j.updated = as.now(); as.updateJoin(j);
+    }
+  });
+  return actDone_(as);
+}
+
+function actWhen_(a) {
+  var s = String(a.start), e = String(a.end);
+  return nightLabel_(s.slice(0, 10)) + ' ' + s.slice(11) + ' עד ' +
+    (e.slice(0, 10) === s.slice(0, 10) ? '' : nightLabel_(e.slice(0, 10)) + ' ') + e.slice(11);
+}
+// Pure: the organizers' activities tab (active only; rewritten on every sync, nothing manual in it).
+function organizerActivities_(pub) {
+  return pub.activities.map(function (a) {
+    var who = a.tag + (a.ageFrom != null || a.ageTo != null
+      ? ' (' + (a.ageFrom != null ? a.ageFrom : '') + '–' + (a.ageTo != null ? a.ageTo : '') + ')' : '');
+    return [actWhen_(a), a.topic, a.owner, who, a.taken, a.capacity || 'ללא הגבלה',
+            a.joined.map(function (j) { return j.family + ' ' + j.count; }).join(' · ')];
+  });
 }
 
 // ---------- Google Sheet store ----------
@@ -673,4 +856,59 @@ function tipsStore_() {
     now: function () { return new Date(); }       // a real date: the sheet shows it in its own (day-first) locale
   };
   return store;
+}
+
+// ---------- activities store (Google Sheet) ----------
+// Reading never creates the tabs (the organizers' sync reads them on every registration); the first write does.
+// Start and end are plain-text cells ("2026-10-06T10:00"), so Sheets cannot turn them into a date.
+function activitiesStore_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheets = {}, rows = {};
+  function sheet(name, head, create) {
+    if (sheets[name]) return sheets[name];
+    var sh = ss.getSheetByName(name);
+    if (!sh && create) {
+      sh = ss.insertSheet(name);
+      if (name === ACT_TABS.acts) {
+        sh.getRange(1, ACT_COL.start + 1, sh.getMaxRows(), 2).setNumberFormat('@');
+        var rule = SpreadsheetApp.newDataValidation().requireValueInList(ACT_STATUSES, true).setAllowInvalid(false).build();
+        sh.getRange(2, ACT_COL.status + 1, sh.getMaxRows() - 1, 1).setDataValidation(rule);
+      }
+      sh.appendRow(head);
+      sh.getRange(1, 1, 1, head.length).setFontWeight('bold');
+      sh.setFrozenRows(1);
+      sh.setRightToLeft(true);
+    }
+    return sh ? (sheets[name] = sh) : null;
+  }
+  function iso(v) {
+    return v instanceof Date ? Utilities.formatDate(v, 'Asia/Jerusalem', "yyyy-MM-dd'T'HH:mm") : String(v);
+  }
+  function read(name, head, cols) {
+    if (rows[name]) return rows[name];
+    var sh = sheet(name, head, false), n = sh ? sh.getLastRow() - 1 : 0;
+    var v = n > 0 ? sh.getRange(2, 1, n, head.length).getValues() : [];
+    rows[name] = v.map(function (c, i) {
+      var r = { _row: i + 2 };
+      Object.keys(cols).forEach(function (k) { r[k] = c[cols[k]]; });
+      if (name === ACT_TABS.acts) { r.status = String(r.status); r.clientId = String(r.clientId); r.start = iso(r.start); r.end = iso(r.end); }
+      return r;
+    }).filter(function (r) { return name === ACT_TABS.acts ? r.id !== '' : r.actId !== ''; });
+    return rows[name];
+  }
+  function vals(r, cols) { var out = []; Object.keys(cols).forEach(function (k) { out[cols[k]] = r[k] == null ? '' : r[k]; }); return out; }
+  function add(name, head, cols, r) {
+    var list = read(name, head, cols), sh = sheet(name, head, true);
+    sh.appendRow(vals(r, cols)); r._row = sh.getLastRow(); list.push(r);
+  }
+  function update(name, head, cols, r) { sheet(name, head, true).getRange(r._row, 1, 1, head.length).setValues([vals(r, cols)]); }
+  return {
+    acts: function () { return read(ACT_TABS.acts, ACT_HEAD, ACT_COL); },
+    joins: function () { return read(ACT_TABS.joins, JOIN_HEAD, JOIN_COL); },
+    addAct: function (r) { add(ACT_TABS.acts, ACT_HEAD, ACT_COL, r); },
+    updateAct: function (r) { update(ACT_TABS.acts, ACT_HEAD, ACT_COL, r); },
+    addJoin: function (r) { add(ACT_TABS.joins, JOIN_HEAD, JOIN_COL, r); },
+    updateJoin: function (r) { update(ACT_TABS.joins, JOIN_HEAD, JOIN_COL, r); },
+    now: function () { return new Date(); }
+  };
 }

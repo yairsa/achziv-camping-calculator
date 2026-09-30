@@ -325,3 +325,117 @@ console.log('tips tests passed');
   assert.strictEqual(ctx.route({ action: 'submitTip', clientId: 'tip-cap-003', category: 'ציוד', title: 'כותרת', text: 'טקסט ארוך' }, null, full).error, 'busy');
 }
 console.log('gear tests passed');
+
+// ---------- activities ----------
+{
+  const P = (x) => JSON.parse(JSON.stringify(x));
+  function actStore() {
+    const acts = [], joins = [];
+    return { actsRows: acts, joinRows: joins, acts: () => acts, joins: () => joins,
+             addAct: (r) => acts.push(r), updateAct: () => {}, addJoin: (r) => joins.push(r), updateJoin: () => {},
+             now: () => '30/09/2026 12:00' };
+  }
+  const reg = memStore(), as = actStore(), A = (req) => P(ctx.route(req, reg, null, as));
+  ctx.route({ action: 'save', user: 'משפחת כהן', pin: '1234', nights: { '2026-10-06': 4 }, maxPeople: 4, data: {} }, reg);
+  ctx.route({ action: 'save', user: 'Levi', pin: '5555', nights: { '2026-10-06': 3 }, maxPeople: 3, data: {} }, reg);
+  ctx.route({ action: 'save', user: 'Mizrahi', pin: '7777', nights: { '2026-10-07': 2 }, maxPeople: 2, data: {} }, reg);
+  const act = (extra) => Object.assign({ topic: 'סדנת עפיפונים', description: 'בונים ומעיפים', start: '2026-10-07T10:00',
+    end: '2026-10-07T12:00', tag: 'ילדים', ageFrom: 6, ageTo: 12, capacity: 5, required: 'מספריים', suggested: '' }, extra);
+  const add = (extra, cid, who) => A(Object.assign({ action: 'saveActivity', clientId: cid || 'act-client-1',
+    activity: act() }, who || { user: 'משפחת כהן', pin: '1234' }, extra));
+
+  // public read before anything exists
+  let r = A({ action: 'activities' });
+  assert.ok(r.ok); assert.deepStrictEqual(r.activities, []); assert.deepStrictEqual(r.trip, { from: '2026-10-06', to: '2026-10-13' });
+
+  // only a registered family, with its code
+  assert.strictEqual(add({ user: 'nobody' }).error, 'not_registered');
+  assert.strictEqual(add({ pin: '0000' }).error, 'wrong_pin');
+  r = add();
+  assert.ok(r.ok); assert.strictEqual(r.id, 1); assert.strictEqual(r.activities.length, 1);
+  const a1 = r.activities[0];
+  assert.strictEqual(a1.owner, 'משפחת כהן'); assert.strictEqual(a1.ageFrom, 6); assert.strictEqual(a1.capacity, 5);
+  assert.strictEqual(a1.taken, 0); assert.ok(!('clientId' in a1) && !('created' in a1));
+  // a retry lands on the same row
+  assert.strictEqual(add().id, 1); assert.strictEqual(as.actsRows.length, 1);
+
+  // validation
+  const bad = (a, code) => assert.strictEqual(add({ activity: act(a) }, 'act-bad-000').error, code, JSON.stringify(a));
+  bad({ topic: 'אב' }, 'too_short');
+  bad({ start: '2026-10-05T10:00' }, 'bad_time');                  // before the trip
+  bad({ end: '2026-10-14T10:00' }, 'bad_time');                    // after it
+  bad({ start: '2026-10-07T24:00' }, 'bad_time');
+  bad({ end: '2026-10-07T09:00' }, 'end_before_start');
+  bad({ end: '2026-10-07T10:00' }, 'end_before_start');
+  bad({ tag: 'כולם' }, 'bad_tag');
+  bad({ ageFrom: 12, ageTo: 6 }, 'bad_age');
+  bad({ ageFrom: 2.5 }, 'bad_age');
+  bad({ capacity: -3 }, 'bad_capacity');
+  bad({ capacity: 501 }, 'bad_capacity');
+  assert.strictEqual(as.actsRows.length, 1);
+  // ages are dropped unless the tag is kids; empty or 0 capacity = unlimited; formulas are guarded
+  r = add({ activity: act({ tag: 'מבוגרים', capacity: '', topic: '=cmd()', start: '2026-10-06T21:00', end: '2026-10-07T01:00' }) }, 'act-client-2',
+          { user: 'levi', pin: '5555' });
+  assert.ok(r.ok);
+  const a2 = r.activities.find(a => a.id === 2);
+  assert.strictEqual(a2.ageFrom, null); assert.strictEqual(a2.capacity, 0); assert.strictEqual(a2.topic, '=cmd()');
+  assert.strictEqual(as.actsRows[1].topic, "'=cmd()"); assert.strictEqual(as.actsRows[1].owner, 'Levi');
+  assert.deepStrictEqual(r.activities.map(a => a.id), [2, 1]);      // sorted by start
+
+  // join: sets (not adds), capacity is enforced, a full activity takes no more
+  const J = (who, pin, count, id) => A({ action: 'join', user: who, pin, id: id || 1, count });
+  assert.strictEqual(J('Levi', '5555', 0).error, 'bad_count');
+  assert.strictEqual(J('Levi', '5555', 3).activities.find(a => a.id === 1).taken, 3);
+  assert.strictEqual(J('levi', '5555', 3).activities.find(a => a.id === 1).taken, 3);   // a retry
+  assert.strictEqual(as.joinRows.length, 1);
+  assert.strictEqual(J('Mizrahi', '7777', 3).error, 'full');
+  r = J('Mizrahi', '7777', 2);
+  let one = r.activities.find(a => a.id === 1);
+  assert.strictEqual(one.taken, 5); assert.deepStrictEqual(one.joined, [{ family: 'Levi', count: 3 }, { family: 'Mizrahi', count: 2 }]);
+  assert.strictEqual(J('משפחת כהן', '1234', 1).error, 'full');
+  assert.ok(J('Levi', '5555', 2).ok);                              // lowering your own count is always fine
+  assert.ok(J('Levi', '5555', 3).ok);                              // and back up to the limit
+  assert.strictEqual(J('Levi', '5555', 4).error, 'full');
+  assert.strictEqual(J('Levi', '5555', 1, 99).error, 'not_found');
+
+  // leave (repeatable), then the place is free again
+  assert.strictEqual(A({ action: 'leave', user: 'Mizrahi', pin: '7777', id: 1 }).activities.find(a => a.id === 1).taken, 3);
+  assert.ok(A({ action: 'leave', user: 'Mizrahi', pin: '7777', id: 1 }).ok);
+  assert.ok(J('משפחת כהן', '1234', 2).ok);
+
+  // edit: owner only; capacity cannot drop below who already joined
+  const edit = (who, a, id) => A(Object.assign({ action: 'saveActivity', id: id || 1, activity: act(a) }, who));
+  assert.strictEqual(edit({ user: 'Levi', pin: '5555' }, {}).error, 'not_owner');
+  assert.strictEqual(edit({ user: 'משפחת כהן', pin: '1234' }, { capacity: 4 }).error, 'below_joined');
+  r = edit({ user: 'משפחת כהן', pin: '1234' }, { capacity: 6, topic: 'עפיפונים ענקיים' });
+  assert.ok(r.ok); one = r.activities.find(a => a.id === 1);
+  assert.strictEqual(one.topic, 'עפיפונים ענקיים'); assert.strictEqual(one.capacity, 6); assert.strictEqual(one.taken, 5);
+  assert.strictEqual(as.actsRows.length, 2);
+
+  // the organizers' tab
+  const org = P(ctx.organizerActivities_(ctx.activitiesPublic_(as)));
+  assert.deepStrictEqual(org[0].slice(0, 6), ['ג׳ 06/10 21:00 עד ד׳ 07/10 01:00', '=cmd()', 'Levi', 'מבוגרים', 0, 'ללא הגבלה']);
+  assert.deepStrictEqual(org[1], ['ד׳ 07/10 10:00 עד 12:00', 'עפיפונים ענקיים', 'משפחת כהן', 'ילדים (6–12)', 5, 6, 'Levi 3 · משפחת כהן 2']);
+
+  // cancel: owner only, repeatable, gone from the public list; no more joins or edits
+  assert.strictEqual(A({ action: 'deleteActivity', user: 'Levi', pin: '5555', id: 1 }).error, 'not_owner');
+  assert.ok(A({ action: 'deleteActivity', user: 'משפחת כהן', pin: '1234', id: 1 }).ok);
+  r = A({ action: 'deleteActivity', user: 'משפחת כהן', pin: '1234', id: 1 });
+  assert.ok(r.ok); assert.deepStrictEqual(r.activities.map(a => a.id), [2]);
+  assert.strictEqual(as.actsRows[0].status, 'בוטל');
+  assert.strictEqual(J('Levi', '5555', 1).error, 'not_found');
+  assert.strictEqual(edit({ user: 'משפחת כהן', pin: '1234' }, {}).error, 'not_found');
+  // Yair hides one in the sheet: gone, and its family cannot cancel what it cannot see
+  as.actsRows[1].status = 'הוסתר';
+  assert.deepStrictEqual(A({ action: 'activities' }).activities, []);
+  assert.strictEqual(A({ action: 'deleteActivity', user: 'levi', pin: '5555', id: 2 }).error, 'not_found');
+
+  // a family can have at most 30 active activities
+  const busy = actStore(), B = (i) => P(ctx.route({ action: 'saveActivity', user: 'Levi', pin: '5555',
+    clientId: 'act-busy-' + String(i).padStart(3, '0'), activity: act() }, reg, null, busy));
+  for (let i = 0; i < 30; i++) assert.ok(B(i).ok);
+  assert.strictEqual(B(30).error, 'busy');
+  busy.actsRows[0].status = 'בוטל';
+  assert.ok(B(31).ok);
+}
+console.log('activities tests passed');

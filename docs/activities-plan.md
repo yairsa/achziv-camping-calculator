@@ -2,7 +2,7 @@
 
 > **Open questions for Yair:** none yet. The decisions below were derived from the brief (30/09/2026). Say if any is wrong.
 
-**Status:** designed 30/09/2026. **Not built — next to build** (Yair, 30/09/2026: *"Handoff and continue"*). Tips (live) and equipment (built, awaiting deploy) are done, so it no longer waits on them. Follow `gear.js` / `tips.js` for the outbox + cache pattern, and the repo `CLAUDE.md` gates, including `tools/stamp.py`. Next: first unticked box in §5.1.
+**Status:** designed 30/09/2026. **Backend built (§5.1); the site is next** (Yair, 30/09/2026: *"Handoff and continue"*). Tips (live) and equipment (built, awaiting deploy) are done, so it no longer waits on them. Follow `gear.js` / `tips.js` for the outbox + cache pattern, and the repo `CLAUDE.md` gates, including `tools/stamp.py`. Next: first unticked box in §5.2.
 
 ## 1. The brief (Yair, 30/09/2026)
 
@@ -43,17 +43,19 @@
 
 The organizers' sheet gets an **פעילויות** tab (topic, time, owner, joined / capacity), synced the same way as families.
 
-## 5. Tasks (not started)
+## 5. Tasks
 
 #### 5.1 Backend
-- [ ] Tabs `פעילויות` / `הצטרפויות`, created on first use
-- [ ] Actions: `activities` (public read, with join counts and names), `saveActivity`, `deleteActivity`, `join`, `leave`
-  - every write checks family name + code and that the family is registered (not cancelled)
-  - capacity enforced inside the script lock, so two last joins can't both succeed
-  - client id so a retried save doesn't create a duplicate
-- [ ] Organizers' sheet: `פעילויות` tab in `syncOrganizers_`
-- [ ] Tests in `tests/backend.test.js`
-- [ ] Gate: `node tests/backend.test.js` green, `python backend/build.py --check` clean
+- [x] Tabs `פעילויות` / `הצטרפויות`, created on the first write (a read never creates them, because the organizers' sync reads on every registration). Start and end are plain-text cells (`2026-10-06T10:00`), so Sheets cannot turn them into dates. A `מזהה שליחה` column was added for the client id.
+- [x] Actions: `activities` (public read, cached 5 minutes and cleared on every write and on a hand edit of either tab), `saveActivity`, `deleteActivity`, `join`, `leave`
+  - every write checks family name + code (the registration's lockout applies); `not_registered` if there's no such family
+  - capacity enforced inside the script lock: `full`; an edit can't drop capacity below who already joined: `below_joined`
+  - client id so a retried save doesn't create a duplicate; `join` *sets* the family's count (never adds), and `leave` / `deleteActivity` are repeatable
+  - `deleteActivity` = status `בוטל` (the row and its joins stay on record); ages are kept only for tag `ילדים`; up to 30 active activities per family (`busy`)
+  - every write answers with the fresh public list, so the site needs no second request
+- [x] Organizers' sheet: `פעילויות` tab in `syncOrganizers_` (when · topic · family · audience · joined · capacity · who joined), rewritten on every sync, also after activity writes
+- [x] Tests in `tests/backend.test.js` (mutation-checked: removing the capacity check, the client-id dedupe, the owner check or the end-before-start check each turns it red)
+- [x] Gate: `node tests/backend.test.js` green, `python backend/build.py --check` clean
 
 #### 5.2 Site
 - [ ] Tab **פעילויות**: list-by-day view + filters (day, tag, text)
