@@ -59,6 +59,6 @@ assert.ok(R({ action: 'delete', user: 'משפחת כהן', pin: '1234' }).ok);
 assert.strictEqual(R({ action: 'load', user: 'משפחת כהן', pin: '1234' }).error, 'not_found');
 assert.strictEqual(R({ action: 'nope' }).error, 'bad_request');
 
-// the pasted file: only ASCII and Hebrew letters
-assert.ok(!/[^\x00-\x7f\u05d0-\u05ea]/.test(fs.readFileSync(__dirname + '/../backend/Code.gs', 'utf8')), 'Code.gs has unexpected characters');
+// the pasted file must stay pure ASCII
+assert.ok(![...fs.readFileSync(__dirname + '/../backend/Code.gs')].some(b => b > 127), 'Code.gs has non-ASCII bytes');
 console.log('all backend tests passed');

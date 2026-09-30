@@ -4,7 +4,7 @@
 //
 // EDIT THIS FILE, then run `python backend/build.py` to regenerate Code.gs - the copy you paste into
 // Apps Script. Code.gs writes Hebrew as \u escapes because pasting Hebrew into the Apps Script editor
-// reversed it (30/09/2026: the tab came out as "תומשרה").
+// reversed it (30/09/2026: the tab came out as "\u05ea\u05d5\u05de\u05e9\u05e8\u05d4").
 //
 // Actions (POST body is JSON, sent as text/plain to avoid a CORS preflight):
 //   save    {user, pin, data, nights, maxPeople, full, group}          -> create, or update if the pin matches
@@ -12,9 +12,9 @@
 //   delete  {user, pin}                                                -> remove the entry
 //   summary {}   (also GET)                                            -> names, families, people per night
 
-var SHEET_NAME = 'הרשמות';
-var HEAD = ['שם משתמש', 'שם להצגה', 'עודכן', 'לנים (מקסימום)', 'לנים לפי לילה', 'מחיר מלא', 'מחיר קבוצתי',
-            'נתונים', 'pinHash', 'ניסיונות כושלים', 'ניסיון כושל אחרון'];
+var SHEET_NAME = '\u05d4\u05e8\u05e9\u05de\u05d5\u05ea';
+var HEAD = ['\u05e9\u05dd \u05de\u05e9\u05ea\u05de\u05e9', '\u05e9\u05dd \u05dc\u05d4\u05e6\u05d2\u05d4', '\u05e2\u05d5\u05d3\u05db\u05df', '\u05dc\u05e0\u05d9\u05dd (\u05de\u05e7\u05e1\u05d9\u05de\u05d5\u05dd)', '\u05dc\u05e0\u05d9\u05dd \u05dc\u05e4\u05d9 \u05dc\u05d9\u05dc\u05d4', '\u05de\u05d7\u05d9\u05e8 \u05de\u05dc\u05d0', '\u05de\u05d7\u05d9\u05e8 \u05e7\u05d1\u05d5\u05e6\u05ea\u05d9',
+            '\u05e0\u05ea\u05d5\u05e0\u05d9\u05dd', 'pinHash', '\u05e0\u05d9\u05e1\u05d9\u05d5\u05e0\u05d5\u05ea \u05db\u05d5\u05e9\u05dc\u05d9\u05dd', '\u05e0\u05d9\u05e1\u05d9\u05d5\u05df \u05db\u05d5\u05e9\u05dc \u05d0\u05d7\u05e8\u05d5\u05df'];
 var COL = { user: 0, family: 1, updated: 2, maxPeople: 3, nightsText: 4, full: 5, group: 6,
             data: 7, pinHash: 8, fails: 9, lastFail: 10 };
 var MAX_FAILS = 5;
