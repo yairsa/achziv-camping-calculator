@@ -2,7 +2,7 @@
 
 > **Open questions for Yair:** none. The decisions in §2 were derived from the brief (30/09/2026). Say if any is wrong.
 
-**Status:** built 30/09/2026, all 9 gates green. Next: the last box of §4.4 (push, check live).
+**Status:** built and live 30/09/2026 (df81317). All of §4 ticked.
 
 ## 1. The brief (Yair, 30/09/2026)
 
@@ -58,7 +58,7 @@
 #### 4.4 Gate
 - [x] `tests/tour.e2e.js` (headless, 360px, backend mocked): welcome tour on the first visit, every step's target visible and not covered by its bubble, skip is remembered, each tab tour runs once on first opening, ? replays, no horizontal scroll, no page errors. Share: the button, and the modal once after the first save only
 - [x] Existing e2e tests skip the tours; all 9 suites green; add `node tests/tour.e2e.js` to the gates in `CLAUDE.md`
-- [ ] Push (Pages is live about 1 minute later), then check the live page headlessly
+- [x] Push (Pages is live about 1 minute later), then check the live page headlessly — df81317, live after ~50s; read-only check: welcome 8 steps, gear tour, share menu, note, no horizontal scroll, no page errors
 
 #### Notes from the build (30/09/2026)
 - **Headings do not get the panels' `scroll-margin`**: it is set on `.card` and `[id]` only, so `scrollIntoView` put an `h2` target under the tab row and the calculator's bar. `bringIn()` in `tour.js` measures the bars that are pinned now (excluding a bar that holds the target) and scrolls the target just below them, re-measuring, since the scroll itself can pin a bar. Mutation-checked: going back to `scrollIntoView` reddens `tour.e2e.js` ("target under a fixed bar").
