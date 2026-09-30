@@ -67,3 +67,39 @@
 - **The other suites opt out with `window.ACHZIV_NOTOUR`** set by an init script. That survives every `goto` and `localStorage.clear()` in those tests, where seen-flags would not.
 - The share modal's "once" is its own flag (`achziv-shared-offer`), mutation-checked ("the modal a second time").
 - **Between steps: fade out, smooth scroll, fade in** (Yair, 30/09/2026: *"add quick fade out -> arrow scroll -> quick fade in animation for orientation"*). `move()` in `tour.js`: 150ms fade, the shield keeps the page dimmed while the lit hole is out, the scroll's end point is measured by jumping and undoing in one frame, then a smooth scroll and a 150ms fade in. Under `prefers-reduced-motion` it is the plain jump. `tour.e2e.js` checks both.
+
+## 5. Tour text editable in the sheet
+
+> Yair, 30/09/2026: *"add the tutorial text to the google sheets(?) - so i can manually edit each bubble"*
+
+### Decisions (derived: object if wrong)
+
+| topic | decision | why |
+|---|---|---|
+| **Where** | A new tab **הדרכה** in the registration spreadsheet, next to טיפים / ציוד. Created with today's text on the first request, the same way the ציוד tab is seeded from `gear-seed.js` | The tabs he already edits by hand; nothing new to share |
+| **Columns** | סיור · מספר צעד · מפתח · כותרת · טקסט. He edits כותרת and טקסט only. מפתח ties a row to its step in `tour.js` (the arrow's target is code) | Text is his; where the arrow points stays code |
+| **Text format** | Plain text. A blank line starts a new paragraph. `**...**` is bold (the "לידיעתכם:" / "פרטיות:" labels). No HTML: the site escapes everything | Easy to type in a cell, and a cell can never inject markup into the page |
+| **Empty cell / unknown key** | An empty כותרת or טקסט falls back to the built-in text. A row whose מפתח is unknown is ignored. Adding or removing steps is **not** supported from the sheet | A cleared cell must never leave an empty bubble |
+| **Shared once** | The texts move out of `tour.js` into `tour-texts.js`, which the page loads and `build.py` inlines into `Code.gs` (`//@include tour-texts.js`), like `search.js` and `gear-seed.js` | The seed and the site's defaults can't drift apart |
+| **Fast** | Backend action `tour` (cached 300s like `gear`, cache cleared by the existing edit trigger). The site shows its cached copy, or the built-in text, at once and refreshes in the background; a tour already open is not changed mid-way | The repo's "fast on the client" rule |
+| **Scope** | The bubbles only. The permanent note under the page (`.site-note` in `index.html`) stays in code | As asked; say if he wants the note there too |
+| **Deploy** | Backend change → **Yair pastes `Code.gs` and deploys a new version** (Code.gs on his clipboard). Until then the site keeps the built-in text; the old script answers `bad_request`, which is treated as "no sheet text" | Always his step (repo `CLAUDE.md`) |
+
+### Tasks
+
+#### 5.1 Shared texts
+- [ ] `tour-texts.js`: every tour's steps as `{tour, key, title, text}` in the plain format above; `tour.js` keeps only targets by key and renders the text (escape, blank line → paragraph, `**` → bold)
+- [ ] Built-in behaviour unchanged: `tour.e2e.js` green; stamp
+
+#### 5.2 Backend
+- [ ] `Code.source.gs`: `//@include tour-texts.js`; tab הדרכה seeded on first use; action `tour` → `{ok, steps:[{key,title,text}]}` with empty cells dropped; cached; the edit trigger clears the cache for this tab too
+- [ ] `backend.test.js`: seed, an edited row wins, an empty cell falls back, an unknown key is ignored; `python backend/build.py`
+- [ ] `SETUP.md`: the tab and how to edit it
+
+#### 5.3 Site
+- [ ] Fetch `tour` in the background (after the page settles), cache in localStorage, merge over the built-in text for the next tour shown
+- [ ] `tour.e2e.js`: an edited title/text from the mocked sheet shows in the bubble; bold and paragraphs render; HTML in a cell shows as text; the old script (`bad_request`) keeps the built-in text
+
+#### 5.4 Gate and go-live
+- [ ] All 9 gates green; push; live check (built-in text, since the old script is still deployed)
+- [ ] Hand Yair `Code.gs` on the clipboard to paste and deploy a new version. Then a live check that the tab הדרכה appears and an edit shows on the site
