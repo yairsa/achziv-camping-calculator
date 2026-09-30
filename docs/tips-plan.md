@@ -1,10 +1,8 @@
 # Camping tips tab — plan
 
-> **Open questions for Yair** (hand-kept index — answer inside the `<Yair: >` marker, in place):
-> - [Q1 — email me when something is waiting for approval?](#q1) (§5)
-> - [Q2 — the category list](#q2) (§4)
+> **Open questions for Yair:** none. Q1 and Q2 were answered 30/09/2026; the answers are in §4 and §5.
 
-**Status:** idea recorded 30/09/2026. Not built. Nothing below is live.
+**Status:** designed and decided 30/09/2026. **Ready to build** — next: first unticked box in §6.1. Not live yet.
 
 ## 1. What it is
 
@@ -43,8 +41,9 @@ Same Google Sheet and Apps Script as registration. Two new tabs in the registrat
 ## 4. Keeping the list from exploding
 
 1. **Fixed categories.** The author picks one; Yair can change it. Search and browsing both filter by category.
-   <a id="q2"></a>**Q2 — proposed list:** ציוד · אוהלים ולינה · אוכל ובישול · ילדים · ים וחוף · מקלחות ושירותים · בטיחות · הגעה וחניה · שונות
-   <Yair: >
+   []()**Q2 — proposed list:** ציוד · אוהלים ולינה · אוכל ובישול · ילדים · ים וחוף · מקלחות ושירותים · בטיחות · הגעה וחניה · שונות
+   <Yair: add: סלולרי ומחשבים, חשמל ותאורה>
+   **Decided:** ציוד · אוהלים ולינה · אוכל ובישול · ילדים · ים וחוף · מקלחות ושירותים · בטיחות · הגעה וחניה · סלולרי ומחשבים · חשמל ותאורה · שונות
 2. **One tip = one idea.** Required short title (up to 60 characters) and a short text (up to 400). Long how-tos get split.
 3. **Duplicate check while writing** (§1). The top 3 similar tips are shown with a "זה כבר קיים — להוסיף תגובה במקום?" button that jumps to commenting on the existing tip.
 4. **Merge instead of reject.** When a near-duplicate arrives, Yair sets it to `מוזג` and picks the existing tip. The script then turns the text into a comment on that tip, so the author's addition isn't lost and the list doesn't grow.
@@ -54,8 +53,9 @@ Same Google Sheet and Apps Script as registration. Two new tabs in the registrat
 
 ## 5. Notifications
 
-<a id="q1"></a>**Q1 — should the script email you when something is waiting for approval?** One email per new item, or one daily summary. It needs you to approve a Gmail permission for the script once, and emails go from your account to your account only. Without it, you check the sheet yourself.
-<Yair: >
+[]()**Q1 — should the script email you when something is waiting for approval?** One email per new item, or one daily summary. It needs you to approve a Gmail permission for the script once, and emails go from your account to your account only. Without it, you check the sheet yourself.
+<Yair: the script emails when something is waiting for approval - a 2 hour digest. give permission>
+**Decided:** a time trigger runs every 2 hours. If anything is waiting (tips or comments, and later activities if they ever need approval), it sends one email to the sheet owner listing the waiting items, with a link to the sheet. Nothing waiting means no email. The trigger is installed from the sheet menu (**מארגנים → הפעלת התראות**), which is also where Google asks for the Gmail and trigger permissions.
 
 ## 6. Tasks (not started)
 
@@ -65,7 +65,7 @@ Same Google Sheet and Apps Script as registration. Two new tabs in the registrat
   - length limits, bot trap field, pending cap, client id for safe retries
 - [ ] "דומה ל…" column filled on each pending tip
 - [ ] Merge: a `מוזג` status with a target id turns the tip into a comment on that tip
-- [ ] Notification per Q1
+- [ ] 2-hour digest email: time trigger + menu item that installs it (Gmail + trigger permissions)
 - [ ] Tests in `tests/backend.test.js`
 - [ ] Gate: `node tests/backend.test.js` green, `python backend/build.py --check` clean
 
