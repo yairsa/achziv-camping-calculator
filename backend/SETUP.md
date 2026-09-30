@@ -44,6 +44,20 @@ Tips and comments land in two tabs of the **registration** sheet, **טיפים**
 - **Email alerts:** **מארגנים → הפעלת התראות**, once. Google then asks for the email and trigger permissions. Every 2 hours the script checks, and if something *new* arrived it sends you one email listing everything waiting. If nothing new arrived, there's no email, so an item you leave waiting on purpose doesn't nag you.
 - **Limits:** a title of up to 60 characters, a tip of up to 400, a comment of up to 300. When 200 items are waiting, new submissions are refused until you clear some.
 
+## Equipment (ציוד) — approving suggested items
+
+The **ציוד** tab holds the general list the site shows. A visitor's "חסר פריט?" arrives as a new row with **סטטוס** **ממתין**, and it is in the 2-hour email with the tips.
+
+- **Approve:** **מאושר** adds it to everyone's list (within about 5 minutes). **Reject:** **נדחה**. **Take any item off the list:** **הוסתר**.
+- **Fix a name, section, tags or note:** edit the cell. Sections are a dropdown; tags are comma separated (בסיסי · ילדים · תינוקות · נוחות).
+
+## Activities (פעילויות) — reviewing
+
+Activities need no approval: a registered family's activity is public at once. They are in the **פעילויות** tab, and who joined is in **הצטרפויות**.
+
+- **Take one down:** set its **סטטוס** to **הוסתר**. **בוטל** is what a family's own cancel writes. Rows are never deleted.
+- **Fix a typo:** edit the cell (topic, description, equipment, מנחה). The site shows it within about 5 minutes. Leave the start and end cells as they are (`2026-10-06T10:00`), or edit them in that exact form.
+
 ## Guided tours (הדרכה) — editing the bubbles
 
 Every tour bubble's title and text is in the **הדרכה** tab of the **registration** sheet. The script creates the tab, filled with the site's current texts, the first time the site asks for them (or when you run **מארגנים → הפעלת התראות**).
