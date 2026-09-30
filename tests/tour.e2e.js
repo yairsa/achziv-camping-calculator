@@ -44,6 +44,7 @@ const errors = [];
   }
   const open = (page) => page.isVisible('.tour-bub');
   const waitTour = (page) => page.waitForSelector('.tour-bub:not([hidden])', { timeout: 8000 });
+  const settled = (page) => page.waitForSelector('.tour-bub:not([data-moving])', { timeout: 5000 });
   const seen = (page) => page.evaluate(() => JSON.parse(localStorage.getItem('achziv-tour-v1') || '{}'));
 
   // Every step: the bubble on screen, the target on screen, under no fixed bar, and not under its own bubble;
@@ -86,6 +87,10 @@ const errors = [];
       assert.strictEqual(await page.isVisible('#tour-prev'), n > 1, 'back on the first step: ' + where);
       await page.click('#tour-next');
       if (last) break;
+      // between steps: faded out with the page still dimmed, then the next step once the scroll has settled
+      assert.ok(await page.evaluate(() => document.querySelector('.tour-bub').classList.contains('tour-out') &&
+        document.querySelector('.tour-block').classList.contains('dim')), 'no fade between steps: ' + where);
+      await settled(page);
     }
     assert.ok(!(await open(page)), 'still open after סיום: ' + where);
     return n;
@@ -99,7 +104,7 @@ const errors = [];
   for (const s of ['לא רשמי', 'רשות הטבע והגנים', 'ט.ל.ח', 'לא נאספים פרטים אישיים', 'רק בדפדפן'])
     assert.ok(first.includes(s), 'the disclaimer lacks: ' + s);
   // back and forth, then the whole walk
-  await page.click('#tour-next'); await page.click('#tour-prev');
+  await page.click('#tour-next'); await settled(page); await page.click('#tour-prev'); await settled(page);
   assert.ok((await page.innerText('#tour-count')).startsWith('1 '));
   assert.strictEqual(await walk(page, 'welcome'), 8);
   assert.strictEqual((await seen(page)).welcome, 1);
@@ -153,6 +158,18 @@ const errors = [];
   await page.click('#tab-tips'); await waitTour(page);
   assert.strictEqual(await page.innerText('#tour-title'), 'טיפים מהקבוצה');
   await page.keyboard.press('Escape');
+
+  // ---- reduced motion: the plain jump between steps, no fade ----
+  {
+    const c = await browser.newContext({ viewport: { width: 360, height: 640 }, reducedMotion: 'reduce' });
+    await c.route('https://**', r => r.abort());
+    const p = await c.newPage(); p.on('pageerror', e => errors.push(String(e)));
+    await p.goto(url); await waitTour(p);
+    await p.click('#tour-next');
+    assert.ok(await p.evaluate(() => !document.querySelector('.tour-bub').hasAttribute('data-moving') &&
+      document.getElementById('tour-count').textContent.startsWith('2 ')), 'a fade under reduced motion');
+    await c.close();
+  }
 
   // ---- ?notour: nothing ----
   page = await visitor('none');

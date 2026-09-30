@@ -415,4 +415,10 @@ p.awho { border: 0; padding: 0; }
   border-top: 1px solid var(--line); border-left: 1px solid var(--line); transform: rotate(45deg); }
 .tour-arrow.up { transform: rotate(225deg); }
 @media (prefers-reduced-motion: no-preference) { .tour-bub:not([hidden]) { animation: tour-in .18s ease-out; } }
+/* between steps (tour.js move()): fade out, scroll, fade in. The shield holds the dimming while the lit hole is out */
+@media (prefers-reduced-motion: no-preference) {
+  .tour-block { background: rgba(0, 0, 0, 0); transition: background-color .15s; }
+  .tour-hole, .tour-bub, .tour-arrow { transition: opacity .15s; }
+}
+.tour-out { opacity: 0; }
 @keyframes tour-in { from { opacity: 0; } to { opacity: 1; } }

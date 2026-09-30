@@ -66,3 +66,4 @@
 - **Tab tours wait for their content** (`ready`, up to 6s): the tips tools and the activity rows appear only after the data loads. A step whose target is still missing is left out, and the counter counts only the steps shown.
 - **The other suites opt out with `window.ACHZIV_NOTOUR`** set by an init script. That survives every `goto` and `localStorage.clear()` in those tests, where seen-flags would not.
 - The share modal's "once" is its own flag (`achziv-shared-offer`), mutation-checked ("the modal a second time").
+- **Between steps: fade out, smooth scroll, fade in** (Yair, 30/09/2026: *"add quick fade out -> arrow scroll -> quick fade in animation for orientation"*). `move()` in `tour.js`: 150ms fade, the shield keeps the page dimmed while the lit hole is out, the scroll's end point is measured by jumping and undoing in one frame, then a smooth scroll and a 150ms fade in. Under `prefers-reduced-motion` it is the plain jump. `tour.e2e.js` checks both.

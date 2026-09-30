@@ -83,6 +83,8 @@
 
   // ---------- the overlay ----------
   var block, hole, bub, arrow, steps, at, name, back, running = false;
+  var moving = false, moveTok = 0;               // moving: between two steps (faded out, scrolling)
+  var FADE = 150;
 
   function build() {
     block = document.createElement('div'); block.className = 'tour-block';
@@ -95,8 +97,8 @@
       '<button type="button" class="btn-link" id="tour-skip">דלג</button></div>';
     arrow = document.createElement('div'); arrow.className = 'tour-arrow'; arrow.setAttribute('aria-hidden', 'true');
     [block, hole, bub, arrow].forEach(function (x) { document.body.appendChild(x); });
-    $('tour-next').addEventListener('click', function () { if (at < steps.length - 1) show(at + 1); else close(); });
-    $('tour-prev').addEventListener('click', function () { if (at > 0) show(at - 1); });
+    $('tour-next').addEventListener('click', function () { if (moving) return; if (at < steps.length - 1) move(at + 1); else close(); });
+    $('tour-prev').addEventListener('click', function () { if (!moving && at > 0) move(at - 1); });
     $('tour-skip').addEventListener('click', close);
     bub.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') { e.preventDefault(); close(); return; }
@@ -111,19 +113,52 @@
     window.addEventListener('scroll', place, { passive: true });
   }
 
-  function show(i) {
+  function fill(i) {
     at = i;
-    var s = steps[i], e = s.target && el(s);
+    var s = steps[i];
     $('tour-count').textContent = (i + 1) + ' מתוך ' + steps.length;
     $('tour-title').textContent = s.title;
     $('tour-text').innerHTML = /^<p>/.test(s.text) ? s.text : '<p>' + s.text + '</p>';
     $('tour-next').textContent = i === steps.length - 1 ? 'סיום' : 'הבא';
     $('tour-prev').hidden = i === 0;
     $('tour-skip').hidden = i === steps.length - 1;
-    if (e) { if (s.top) window.scrollTo(0, 0); else bringIn(e); }
     bub.scrollTop = 0;
-    place();
+  }
+  function jumpTo(i) {
+    var s = steps[i], e = s.target && el(s);
+    if (e) { if (s.top) window.scrollTo(0, 0); else bringIn(e); }
+  }
+  function show(i) {
+    fill(i); jumpTo(i); place();
     $('tour-next').focus({ preventScroll: true });
+  }
+
+  // Between steps, for orientation: a quick fade out (the page stays dimmed), a smooth scroll to the next target,
+  // a quick fade in there. Under prefers-reduced-motion it is the plain jump. The scroll's end point is measured by
+  // doing the jump and undoing it in the same frame, so nothing of it is painted.
+  function move(i) {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { show(i); return; }
+    var tok = ++moveTok;
+    moving = true; bub.setAttribute('data-moving', '');
+    block.classList.add('dim');
+    [bub, hole, arrow].forEach(function (x) { x.classList.add('tour-out'); });
+    setTimeout(function () {
+      if (tok !== moveTok) return;
+      fill(i);
+      var y0 = window.scrollY; jumpTo(i); var y1 = window.scrollY;
+      window.scrollTo(0, y0);
+      if (Math.abs(y1 - y0) > 1) window.scrollTo({ top: y1, behavior: 'smooth' });
+      var t0 = Date.now();
+      (function settle() {
+        if (tok !== moveTok) return;
+        if (Math.abs(window.scrollY - y1) > 1 && Date.now() - t0 < 900) { requestAnimationFrame(settle); return; }
+        window.scrollTo(0, y1);
+        moving = false; place();
+        [bub, hole, arrow].forEach(function (x) { x.classList.remove('tour-out'); });
+        $('tour-next').focus({ preventScroll: true });
+        setTimeout(function () { if (tok === moveTok) bub.removeAttribute('data-moving'); }, FADE);
+      })();
+    }, FADE);
   }
 
   // Scroll so the target sits just under the bars pinned on top (the tab row, the calculator's bar, the gear and
@@ -152,12 +187,12 @@
     var M = 12, GAP = 14;
     bub.style.maxHeight = (vh - 2 * M) + 'px';
     if (!e) {
-      block.classList.add('dim'); hole.hidden = true; arrow.hidden = true;
+      block.classList.add('dim'); hole.hidden = true; arrow.hidden = true;   // no target: the shield dims the page
       bub.style.left = Math.max(M, (vw - bub.offsetWidth) / 2) + 'px';
       bub.style.top = Math.max(M, (vh - bub.offsetHeight) / 2) + 'px';
       return;
     }
-    block.classList.remove('dim'); hole.hidden = false; arrow.hidden = false;
+    block.classList.toggle('dim', moving); hole.hidden = false; arrow.hidden = false;
     var r = e.getBoundingClientRect(), P = 6;
     var hl = Math.max(2, r.left - P), hr = Math.min(vw - 2, r.right + P);    // kept on screen: the tab row is full width
     hole.style.left = hl + 'px'; hole.style.top = (r.top - P) + 'px';
@@ -196,6 +231,8 @@
 
   function close() {
     running = false; markSeen(name);
+    moveTok++; moving = false; bub.removeAttribute('data-moving');
+    [bub, hole, arrow].forEach(function (x) { x.classList.remove('tour-out'); });
     block.hidden = hole.hidden = bub.hidden = arrow.hidden = true;
     document.documentElement.classList.remove('touring');
     if (back && back.focus && document.contains(back)) back.focus({ preventScroll: true });
