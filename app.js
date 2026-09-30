@@ -436,7 +436,13 @@
           });
       });
   }
-  window.CampApi = { api: api, esc: esc };   // for tips.js
+  // for tips.js, gear.js, activities.js. me(): the name + code loaded or saved in this visit (never stored),
+  // remembered(): the name this device last registered with.
+  window.CampApi = { api: api, esc: esc, norm: norm, remembered: remembered,
+    me: function () {
+      var pin = document.getElementById('reg-pin').value.trim();
+      return signedIn && /^\d{4,8}$/.test(pin) ? { user: signedIn, pin: pin } : null;
+    } };
   function regMsg(text, kind) {
     var m = document.getElementById('reg-msg');
     m.textContent = text; m.className = 'msg' + (kind ? ' ' + kind : '');

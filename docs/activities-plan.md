@@ -2,7 +2,7 @@
 
 > **Open questions for Yair:** none yet. The decisions below were derived from the brief (30/09/2026). Say if any is wrong.
 
-**Status:** designed 30/09/2026. **Backend built (§5.1); the site is next** (Yair, 30/09/2026: *"Handoff and continue"*). Tips (live) and equipment (built, awaiting deploy) are done, so it no longer waits on them. Follow `gear.js` / `tips.js` for the outbox + cache pattern, and the repo `CLAUDE.md` gates, including `tools/stamp.py`. Next: first unticked box in §5.2.
+**Status:** backend (§5.1) and site (§5.2) built 30/09/2026. **Waiting on Yair: §5.3**, paste the new `Code.gs` and deploy a new version. Until then the live tab says "הפעילויות ייפתחו בקרוב" (the live script answers `bad_request`). The same paste also ships the equipment backend (gear-plan §5.3).
 
 ## 1. The brief (Yair, 30/09/2026)
 
@@ -58,13 +58,23 @@ The organizers' sheet gets an **פעילויות** tab (topic, time, owner, join
 - [x] Gate: `node tests/backend.test.js` green, `python backend/build.py --check` clean
 
 #### 5.2 Site
-- [ ] Tab **פעילויות**: list-by-day view + filters (day, tag, text)
+- [x] Tab **פעילויות**: list-by-day view + filters (day, tag, text): `activities.js`
+  - no day chosen: each activity under its first day. A day chosen: everything happening on it, so a night activity shows on both days. Next-day ends read "21:00 עד 01:00 (למחרת)", because a date inside a time range scrambles in RTL
+  - the tag filter **מבוגרים** or **ילדים** also shows **לכולם** activities (they suit both). **לכולם** shows only those
+  - the list shows at once from this browser's copy (`achziv-acts-cache`) and is refreshed in the background (prefetched after page load)
   - position: right after **ציוד** in the tab row (Yair, 30/09/2026: *"Events tab will be after ציוד"*)
-- [ ] Calendar view (desktop all days; phone 3 days with arrows)
-- [ ] Details panel: join / leave / edit / delete
-- [ ] Add / edit form: topic, description, start/end (end defaults to the start day), tag + ages, capacity, equipment ×2
-- [ ] Uses the registration name + code; "ההרשמה שלי" fills them in when already loaded on this device
-- [ ] Gate: headless browser run at 360px: add → join → full → leave → edit → delete; no horizontal scroll
+- [x] Calendar view (desktop all days; phone 3 days with arrows)
+  - the hours run 08:00–22:00, widened by whatever starts or ends outside them. The tail of last night's activity is a short "עד 01:00" block at the top, so the day does not stretch to 00:00
+  - overlapping activities sit side by side (lanes). The phone switch is at 700px
+- [x] Details panel: join / leave / edit / delete, in a `<dialog>`
+  - **writes wait for the server's verdict (no outbox)**: each one needs the code checked or a free place, and the reply carries the fresh list. `api()` retries a dropped reply, which is safe because every write repeats cleanly
+  - the edit and cancel buttons show when the known name is the owner's (the server enforces it anyway). Cancelling always asks first, and the question names the participant count when there are any
+- [x] Add / edit form: topic, description, start/end (end defaults to the start day), tag + ages, capacity, equipment ×2
+  - times are hour and minute selects (00/15/30/45), so every browser shows a 24-hour clock. The end follows the start (same day, an hour later) until it is changed by hand
+- [x] Uses the registration name + code; "ההרשמה שלי" fills them in when already loaded on this device
+  - `CampApi.me()` in app.js gives the name + code loaded in this visit. Otherwise the name this device registered with is filled in. The code is kept in memory for the visit only, never stored. "החלפה" switches family
+- [x] Gate: headless browser run at 360px: add → join → full → leave → edit → delete; no horizontal scroll: `tests/activities.e2e.js`, plus the tab order in `tests/layout.e2e.js`
+  - mutation-checked: the day overlap, keeping the accepted code, the phone paging and the registration prefill each turn it red
 
 #### 5.3 Go-live
 - [ ] Yair pastes the new `Code.gs` and deploys a new version

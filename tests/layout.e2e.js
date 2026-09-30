@@ -16,7 +16,7 @@ const CHROME = process.env.CHROME || 'C:/Program Files/Google/Chrome/Application
   const top = (sel) => page.evaluate((s) => document.querySelector(s).getBoundingClientRect().top, sel);
 
   await page.goto(url);
-  assert.deepStrictEqual(await page.locator('[role=tab]').allInnerTexts(), ['מחשבון', 'על המקום', 'ציוד', 'טיפים']);
+  assert.deepStrictEqual(await page.locator('[role=tab]').allInnerTexts(), ['מחשבון', 'על המקום', 'ציוד', 'פעילויות', 'טיפים']);
   assert.ok(await page.isVisible('#open-prices') && await page.isHidden('#calc-prices'));
 
   // the tab row and the calculator's bar stay on top while scrolling
