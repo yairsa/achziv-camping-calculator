@@ -2,7 +2,7 @@
 
 > **Open questions for Yair:** 1 — [Q1 sections](#q1) (not blocking: built with the proposal, easy to change).
 
-**Status:** planned and building, 30/09/2026 (Yair's brief below). Next: first unticked box in §5.
+**Status:** built and on the site, 30/09/2026 (Yair's brief below). The site uses the starter list until Yair deploys the new `Code.gs` (§5.3).
 
 ## 1. The brief (Yair, 30/09/2026)
 
@@ -59,11 +59,14 @@ A fifth tab, **ציוד**, with two views:
 - [x] Gate: `node tests/backend.test.js` green, `python backend/build.py --check` clean
 
 #### 5.2 Site
-- [ ] Tab **ציוד**: the "בחירת פריטים" view (sections, ticks, text + tag filter, add all בסיסי)
-- [ ] The "הרשימה שלי" view: packed → bottom of its section, progress, reset, copy / WhatsApp
-- [ ] Personal items: form, shown at once, outbox to `submitGear`, merge on approval
-- [ ] Starter list shown instantly; cached copy, then fresh in the background
-- [ ] Gate: `node tests/gear.e2e.js` (headless Chrome, 360px, mocked backend) + all other gates
+- [x] Tab **ציוד**: the "בחירת פריטים" view (sections, ticks, text + tag filter, add all בסיסי)
+  - tags are single-select chips. With 5 tabs the bar overflowed at 360px by ~20px: "על המקום ונגישות" is now "על המקום" and phone tab padding is 6px.
+- [x] The "הרשימה שלי" view: packed → bottom of its section, progress, reset, copy / WhatsApp
+- [x] Personal items: form, shown at once, outbox to `submitGear`, merge on approval
+  - the outbox sends only after a `gear` read succeeded, so the old live script is not retried every few seconds. An own item can be removed with "הסרה".
+- [x] Starter list shown instantly; cached copy, then fresh in the background
+- [x] Gate: `node tests/gear.e2e.js` (headless Chrome, 360px, mocked backend) + all other gates
+  - mutation-checked: disabling the merge, or packed-to-bottom, turns it red.
 
 #### 5.3 Go-live
 - [ ] Yair pastes the new `Code.gs` and deploys a new version (same URL). Until then the site uses the starter list, and suggestions wait in the outbox.

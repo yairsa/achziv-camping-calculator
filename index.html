@@ -21,8 +21,9 @@
   <nav class="tabs" role="tablist" aria-label="חלקי האתר">
     <button role="tab" id="tab-calc"   aria-controls="panel-calc"   aria-selected="true">מחשבון</button>
     <button role="tab" id="tab-prices" aria-controls="panel-prices" aria-selected="false" tabindex="-1">מחירון</button>
-    <button role="tab" id="tab-place"  aria-controls="panel-place"  aria-selected="false" tabindex="-1">על המקום ונגישות</button>
+    <button role="tab" id="tab-place"  aria-controls="panel-place"  aria-selected="false" tabindex="-1">על המקום</button>
     <button role="tab" id="tab-tips"   aria-controls="panel-tips"   aria-selected="false" tabindex="-1">טיפים</button>
+    <button role="tab" id="tab-gear"   aria-controls="panel-gear"   aria-selected="false" tabindex="-1">ציוד</button>
   </nav>
 
   <main id="main">
@@ -253,6 +254,67 @@
         </form>
       </div>
     </section>
+
+    <!-- ===== Equipment ===== -->
+    <section role="tabpanel" id="panel-gear" aria-labelledby="tab-gear" hidden>
+      <div class="card">
+        <h2>רשימת ציוד אישית</h2>
+        <p class="hint">בחרו מה אתם לוקחים, ואז סמנו מה כבר ארוז. הרשימה נשמרת בדפדפן הזה בלבד — להעברה לטלפון אחר, שלחו אותה בוואטסאפ.</p>
+        <div class="seg" role="group" aria-label="תצוגה">
+          <button type="button" id="gear-view-pick" aria-pressed="true">בחירת פריטים</button>
+          <button type="button" id="gear-view-mine" aria-pressed="false">הרשימה שלי (0)</button>
+        </div>
+      </div>
+
+      <div id="gear-pick">
+        <div class="card">
+          <div class="field">
+            <label for="gear-q">חיפוש</label>
+            <input id="gear-q" type="search" autocomplete="off" placeholder="למשל: פנס, צל, תינוק">
+          </div>
+          <div id="gear-tags" class="chips" role="group" aria-label="סינון לפי תגית"></div>
+          <button type="button" id="gear-basic" class="btn-secondary">+ הוספת כל הפריטים הבסיסיים</button>
+          <p id="gear-pick-msg" class="msg" role="status" aria-live="polite"></p>
+          <p id="gear-count" class="hint" aria-live="polite"></p>
+        </div>
+        <div id="gear-pick-list" class="card glists"></div>
+      </div>
+
+      <div id="gear-mine" hidden>
+        <div class="card">
+          <p id="gear-mine-empty" class="hint">עוד לא בחרתם פריטים. עברו ל"בחירת פריטים" וסמנו מה אתם לוקחים.</p>
+          <div id="gear-progress" hidden>
+            <p id="gear-progress-text" class="gprog"></p>
+            <progress id="gear-progress-bar" value="0" max="1" aria-labelledby="gear-progress-text"></progress>
+          </div>
+          <div id="gear-mine-tools" class="actions" hidden>
+            <button type="button" id="gear-copy" class="btn-secondary">העתקת הרשימה</button>
+            <a id="gear-wa" class="btn-secondary" href="https://wa.me/" target="_blank" rel="noopener">שליחה בוואטסאפ</a>
+            <button type="button" id="gear-reset" class="btn-link">ניקוי סימוני "ארוז"</button>
+          </div>
+          <p id="gear-mine-msg" class="msg" role="status" aria-live="polite"></p>
+        </div>
+        <div id="gear-mine-list" class="card glists"></div>
+      </div>
+
+      <div class="card" id="gear-add">
+        <h2>חסר פריט?</h2>
+        <p class="hint">הוסיפו אותו לרשימה שלכם. הוא יישלח גם למארגן, שיחליט אם להוסיף אותו לרשימה הכללית.</p>
+        <form id="gear-form" novalidate>
+          <div class="field">
+            <label for="gear-new-sec">קטגוריה</label>
+            <select id="gear-new-sec" required></select>
+          </div>
+          <div class="field">
+            <label for="gear-new-name">הפריט</label>
+            <input id="gear-new-name" type="text" maxlength="60" autocomplete="off" required placeholder="למשל: כיסא חוף">
+          </div>
+          <div class="hp" aria-hidden="true"><label>לא למילוי <input id="gear-hp" type="text" tabindex="-1" autocomplete="off"></label></div>
+          <div class="actions"><button type="submit" class="btn-primary">הוספה לרשימה שלי</button></div>
+          <p id="gear-form-msg" class="msg" role="status" aria-live="polite"></p>
+        </form>
+      </div>
+    </section>
   </main>
 
   <footer class="foot">
@@ -263,5 +325,7 @@
   <script src="app.js"></script>
   <script src="search.js"></script>
   <script src="tips.js"></script>
+  <script src="gear-seed.js"></script>
+  <script src="gear.js"></script>
 </body>
 </html>

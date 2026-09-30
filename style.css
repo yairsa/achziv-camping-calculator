@@ -225,12 +225,43 @@ a.btn-secondary { display: inline-block; text-decoration: none; border-style: so
 .left { display: block; margin-top: 2px; }
 @media (max-width: 520px) { .tips-tools { grid-template-columns: 1fr; } }
 
+/* equipment */
+#panel-gear .field { margin-bottom: 10px; }
+#panel-gear .field input, #panel-gear .field select {
+  display: block; width: 100%; font: inherit; color: var(--text); background: var(--card);
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-top: 4px;
+}
+#panel-gear .msg:empty { display: none; }
+#gear-pick[hidden], #gear-mine[hidden], #gear-progress[hidden], #gear-mine-tools[hidden], #gear-mine-empty[hidden] { display: none; }
+.seg { display: flex; gap: 0; border: 1px solid var(--accent); border-radius: 8px; overflow: hidden; margin-top: 10px; }
+.seg button { flex: 1; font: inherit; font-weight: 600; background: var(--card); color: var(--accent); border: 0; padding: 10px 8px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--card); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.chip { font: inherit; font-size: .9rem; font-weight: 600; background: var(--card); color: var(--accent);
+  border: 1px solid var(--accent); border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent); color: var(--card); }
+.glists:empty { display: none; }
+.gsec { margin: 0 0 6px; }
+.gsec + .gsec { border-top: 1px solid var(--line); padding-top: 4px; }
+.gsec summary { display: flex; justify-content: space-between; gap: 8px; }
+.gcount { font-weight: 600; font-variant-numeric: tabular-nums; }
+.glist { list-style: none; margin: 0 0 6px; padding: 0; }
+.gitem { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 10px; padding: 6px 0; }
+.gitem input { width: 22px; height: 22px; margin: 2px 0 0; flex-shrink: 0; accent-color: var(--accent); }
+.gitem label { flex: 1; min-width: 0; overflow-wrap: anywhere; cursor: pointer; }
+.gnote { display: block; font-size: .85rem; }
+.gitem .b, .gitem .gdrop { margin-inline-start: 32px; }
+.gitem .b + .gdrop { margin-inline-start: 0; }
+.gitem.packed .gname { text-decoration: line-through; color: var(--muted); }
+.gprog { font-weight: 700; margin: 0 0 4px; }
+#gear-progress-bar { width: 100%; height: 12px; accent-color: var(--accent); margin-bottom: 10px; }
+
 .foot { font-size: .85rem; color: var(--muted); padding-bottom: 32px; }
 
 @media (max-width: 520px) {
   body { font-size: 16px; }
   h1 { font-size: 1.4rem; }
-  .tabs button { padding: 10px 8px; }
+  .tabs button { padding: 10px 6px; }
   .facilities { columns: 1; }
   .facts { grid-template-columns: 1fr; }
   .facts dd { margin-bottom: 6px; }
