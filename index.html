@@ -58,6 +58,29 @@
         <div id="result"></div>
       </div>
 
+      <div class="card" id="reg-card">
+        <h2>4. שמירת ההרשמה <span data-tip="נשמרים רק השם שבחרתם, הרכב הלנים והתאריכים — כדי שהמארגנים יוכלו לספור כמה נהיה. הקוד נשמר מוצפן. אפשר לחזור, לעדכן או לבטל בכל זמן." data-about="שמירת ההרשמה"></span></h2>
+        <p id="reg-off" class="hint" hidden>ההרשמה עדיין לא פעילה — בינתיים אפשר להשתמש במחשבון.</p>
+        <form id="reg-form" novalidate>
+          <p class="hint">שמרו את מה שמילאתם כדי שנדע כמה נהיה. כדי לחזור ולעדכן — אותו שם ואותו קוד.</p>
+          <div class="fields">
+            <label for="reg-user">שם המשפחה<br><input id="reg-user" type="text" autocomplete="username" maxlength="40" required placeholder="למשל: משפחת כהן"></label>
+            <label for="reg-pin">קוד אישי (4 עד 8 ספרות)<br><input id="reg-pin" type="password" inputmode="numeric" autocomplete="current-password" pattern="[0-9]*" maxlength="8" required></label>
+          </div>
+          <div class="actions">
+            <button type="submit" id="reg-save" class="btn-primary">שמירה / עדכון</button>
+            <button type="button" id="reg-load" class="btn-secondary">טעינת ההרשמה שלי</button>
+            <button type="button" id="reg-delete" class="btn-link">ביטול ההרשמה</button>
+          </div>
+          <p id="reg-msg" class="msg" role="status" aria-live="polite"></p>
+        </form>
+      </div>
+
+      <div class="card" id="group-card" hidden>
+        <h2>הקבוצה עד עכשיו</h2>
+        <div id="group-status" aria-live="polite"></div>
+      </div>
+
       <p class="center"><button type="button" id="reset" class="btn-link">איפוס המחשבון</button></p>
     </section>
 

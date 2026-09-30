@@ -70,7 +70,18 @@
     return w;
   }
 
-  window.CampCalc = { calcPeriod: calcPeriod, calcAll: calcAll, warnings: warnings, nightsBetween: nightsBetween, dm: dm };
+  // People sleeping each night, keyed by the ISO date of the evening.
+  function nightsCount(state) {
+    var out = {};
+    state.periods.forEach(function (p) {
+      var n = peopleIn(p.custom ? p.counts : state.base);
+      if (!n) return;
+      for (var t = toTime(p.from); t < toTime(p.to); t += DAY) { var k = toIso(t); out[k] = (out[k] || 0) + n; }
+    });
+    return out;
+  }
+
+  window.CampCalc = { calcPeriod: calcPeriod, calcAll: calcAll, warnings: warnings, nightsBetween: nightsBetween, dm: dm, nightsCount: nightsCount };
   if (typeof document === 'undefined') return;   // loaded by tests only
 
   // ---------- state ----------
@@ -342,7 +353,110 @@
   var fromHash = document.getElementById('tab-' + location.hash.slice(1));
   if (fromHash) selectTab(fromHash);
 
+  // ---------- registration (Google Sheet backend) ----------
+  var ERR = {
+    bad_user: 'שם המשפחה צריך להכיל 2 עד 40 תווים.',
+    bad_pin: 'הקוד צריך להיות 4 עד 8 ספרות.',
+    wrong_pin: 'השם הזה כבר רשום, והקוד לא תואם. אם זו ההרשמה שלכם — בדקו את הקוד.',
+    locked: 'יותר מדי ניסיונות עם קוד שגוי. פנו למארגנים כדי לשחרר את ההרשמה.',
+    not_found: 'לא מצאנו הרשמה בשם הזה.',
+    too_big: 'יותר מדי נתונים — נסו לצמצם את מספר התקופות.',
+    network: 'אין חיבור לשרת כרגע. נסו שוב בעוד רגע.'
+  };
+  var USER_KEY = 'achziv-user';
+  function api(body) {
+    return fetch(C.apiUrl, { method: body ? 'POST' : 'GET', headers: body ? { 'Content-Type': 'text/plain;charset=utf-8' } : undefined,
+                             body: body ? JSON.stringify(body) : undefined })
+      .then(function (r) { return r.json(); })
+      .catch(function () { return { ok: false, error: 'network' }; });
+  }
+  function regMsg(text, kind) {
+    var m = document.getElementById('reg-msg');
+    m.textContent = text; m.className = 'msg' + (kind ? ' ' + kind : '');
+  }
+  function fail(res) { regMsg(ERR[res.error] || 'משהו השתבש. נסו שוב.', 'bad'); }
+  function creds() {
+    var user = document.getElementById('reg-user').value.trim(), pin = document.getElementById('reg-pin').value.trim();
+    if (user.length < 2) { regMsg(ERR.bad_user, 'bad'); document.getElementById('reg-user').focus(); return null; }
+    if (!/^\d{4,8}$/.test(pin)) { regMsg(ERR.bad_pin, 'bad'); document.getElementById('reg-pin').focus(); return null; }
+    try { localStorage.setItem(USER_KEY, user); } catch (e) { /* ignore */ }
+    return { user: user, pin: pin };
+  }
+  function busy(on) { document.querySelectorAll('#reg-form button').forEach(function (b) { b.disabled = on; }); }
+
+  function renderGroup(sum) {
+    if (!sum || !sum.ok) return;
+    document.getElementById('group-card').hidden = false;
+    var box = document.getElementById('group-status');
+    var keys = Object.keys(sum.nights).sort();
+    if (!keys.length) { box.innerHTML = '<p class="hint">עוד אין הרשמות.</p>'; return; }
+    var min = C.groupMinPeople;
+    box.innerHTML = '<p><strong>' + sum.families + '</strong> ' + (sum.families === 1 ? 'משפחה רשומה' : 'משפחות רשומות') + '.</p>' +
+      '<table class="nights-table"><thead><tr><th scope="col">לילה</th><th scope="col">לנים</th><th scope="col">מחיר קבוצתי?</th></tr></thead><tbody>' +
+      keys.map(function (k) {
+        var n = sum.nights[k];
+        return '<tr><td>' + weekday(k) + ' ' + dm(k) + '</td><td class="num">' + n + '</td><td>' +
+          (n >= min ? '<span class="yes">✓ כן</span>' : '<span class="no">חסרים ' + (min - n) + '</span>') + '</td></tr>';
+      }).join('') + '</tbody></table>' +
+      '<p class="hint">מחיר קבוצתי מ-' + min + ' לנים שמגיעים יחד. הספירה כוללת רק מי שנרשם כאן.</p>';
+  }
+
+  function payload(c) {
+    var r = calcAll(state);
+    return { user: c.user, pin: c.pin, family: c.user, data: state, nights: nightsCount(state),
+             maxPeople: r.maxPeople, full: r.full, group: r.group };
+  }
+
+  function initRegistration() {
+    if (!C.apiUrl) { document.getElementById('reg-form').hidden = true; document.getElementById('reg-off').hidden = false; return; }
+    try { var u = localStorage.getItem(USER_KEY); if (u) document.getElementById('reg-user').value = u; } catch (e) { /* ignore */ }
+
+    document.getElementById('reg-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var c = creds(); if (!c) return;
+      if (warnings(state).length) { regMsg('יש בעיה בפרטים שמילאתם — ראו את ההערות בסעיף 3.', 'bad'); return; }
+      busy(true); regMsg('שומר…');
+      api(Object.assign({ action: 'save' }, payload(c))).then(function (res) {
+        busy(false);
+        if (!res.ok) return fail(res);
+        regMsg(res.created ? 'נרשמתם! אפשר לחזור ולעדכן עם אותו שם וקוד.' : 'ההרשמה עודכנה.', 'good');
+        renderGroup(res.summary);
+      });
+    });
+
+    document.getElementById('reg-load').addEventListener('click', function () {
+      var c = creds(); if (!c) return;
+      busy(true); regMsg('טוען…');
+      api({ action: 'load', user: c.user, pin: c.pin }).then(function (res) {
+        busy(false);
+        if (!res.ok) return fail(res);
+        var d = res.data;
+        if (d && d.base && d.periods && d.periods.length) {
+          state = { base: Object.assign(emptyCounts(), d.base),
+                    periods: d.periods.map(function (p) { return { from: p.from, to: p.to, custom: !!p.custom, counts: Object.assign(emptyCounts(), p.counts) }; }) };
+          renderBase(); renderPeriods(); update();
+        }
+        regMsg('ההרשמה נטענה' + (res.updated ? ' (עודכנה לאחרונה ' + res.updated + ')' : '') + '. אפשר לשנות ולשמור שוב.', 'good');
+      });
+    });
+
+    document.getElementById('reg-delete').addEventListener('click', function () {
+      var c = creds(); if (!c) return;
+      if (!confirm('לבטל את ההרשמה של "' + c.user + '"?')) return;
+      busy(true); regMsg('מבטל…');
+      api({ action: 'delete', user: c.user, pin: c.pin }).then(function (res) {
+        busy(false);
+        if (!res.ok) return fail(res);
+        regMsg('ההרשמה בוטלה.', 'good');
+        renderGroup(res.summary);
+      });
+    });
+
+    api(null).then(renderGroup);
+  }
+
   renderPriceTable();
+  initRegistration();
   renderBase();
   renderPeriods();
   update();

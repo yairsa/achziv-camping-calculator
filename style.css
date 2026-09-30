@@ -131,6 +131,27 @@ td, th { padding: 6px 4px; border-bottom: 1px solid var(--line); text-align: sta
 .total.group { background: var(--accent-soft); border-color: var(--accent); }
 .total.group strong { color: var(--accent); }
 
+/* registration */
+.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0; }
+.fields label { font-size: .9rem; color: var(--muted); }
+.fields input {
+  width: 100%; font: inherit; color: var(--text); background: var(--card);
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-top: 2px;
+}
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.actions .btn-secondary { width: auto; border-style: solid; }
+.btn-primary {
+  font: inherit; font-weight: 700; background: var(--accent); color: var(--card);
+  border: 0; border-radius: 8px; padding: 10px 18px; cursor: pointer;
+}
+button:disabled { opacity: .55; cursor: wait; }
+.msg { min-height: 1.5em; margin: 10px 0 0; font-weight: 600; }
+.msg.good { color: var(--accent); }
+.msg.bad { color: var(--warn-text); background: var(--warn-bg); padding: 6px 10px; border-radius: 6px; }
+.nights-table .yes { color: var(--accent); font-weight: 700; }
+.nights-table .no { color: var(--muted); }
+@media (max-width: 520px) { .fields { grid-template-columns: 1fr; } }
+
 /* price list + place */
 .table-wrap { overflow-x: auto; }
 .notes li, .rules li { margin-bottom: 6px; }

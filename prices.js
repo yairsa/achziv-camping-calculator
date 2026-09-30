@@ -6,6 +6,10 @@ window.CAMP = {
   checked: '30/09/2026',
   sourceUrl: 'https://www.parks.org.il/camping/%D7%97%D7%A0%D7%99%D7%95%D7%9F-%D7%9C%D7%99%D7%9C%D7%94-%D7%92%D7%9F-%D7%9C%D7%90%D7%95%D7%9E%D7%99-%D7%90%D7%9B%D7%96%D7%99%D7%91-%D7%95%D7%97%D7%95%D7%A3-%D7%90%D7%9B%D7%96%D7%99%D7%91/',
 
+  // Registration backend (Google Apps Script web-app URL, see backend/SETUP.md).
+  // Empty = registration switched off; the calculator still works.
+  apiUrl: '',
+
   // Stay defaults (ISO dates; displayed day-first).
   defaultFrom: '2026-10-06',
   defaultTo: '2026-10-10',
