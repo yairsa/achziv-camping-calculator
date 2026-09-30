@@ -90,5 +90,7 @@ Same Google Sheet and Apps Script as registration. Two new tabs in the registrat
   - `node tests/tips.e2e.js`: headless Chrome at 360px against `Code.gs` in Node's vm. Covers tips and comments, dropped replies, the old live script, and no horizontal scroll.
 
 #### 6.3 Go-live
-- [ ] Yair pastes the new `Code.gs` and deploys a new version (same URL)
+- [x] Yair pastes the new `Code.gs` and deploys a new version (same URL)
+  - verified 30/09/2026: the live `tips` action answers `ok` with the 11 categories, and the live site shows the tab with its form. That call also created the two tabs in the sheet.
 - [ ] Live check: submit, approve, see it on the site, clean up the test rows
+  - **Decided (Claude, 30/09):** no test row was written to the live sheet. The read path is verified live. The write path (submit → the sheet → approve → visible) is covered by `tests/tips.e2e.js` against the same `Code.gs`, and the first real tip Yair approves completes this box. If a real submission stays on "שולח…", check this first.
