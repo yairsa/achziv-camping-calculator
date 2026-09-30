@@ -1,5 +1,7 @@
 # מחשבון קמפינג אכזיב
 
+**Live:** https://yairsa.github.io/achziv-camping-calculator/
+
 A static RTL page that helps families in a group camping trip work out what their stay at the Achziv night camp (northern camp) will cost.
 
 - **Calculator:** family composition (adults 14+, children 5–13, under-5s), optional discounts (Matmon, reserve duty, soldiers, students, seniors, disabled), mattress rental, and stay dates (default 06/10–10/10/2026). The stay can be split into several periods, each with its own composition.
