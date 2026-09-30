@@ -2,7 +2,7 @@
 
 > **Open questions for Yair:** none yet. The decisions below were derived from the brief (30/09/2026). Say if any is wrong.
 
-**Status:** live 30/09/2026: the backend is deployed and the tab is open. **Waiting on Yair: §5.3**, add the demo activities from the sheet menu. Until then the live tab says "הפעילויות ייפתחו בקרוב" (the live script answers `bad_request`). The same paste also ships the equipment backend (gear-plan §5.3).
+**Status:** live 30/09/2026: the backend is deployed and the tab is open. All of §5 is done. The 3 demo activities are live. Until then the live tab says "הפעילויות ייפתחו בקרוב" (the live script answers `bad_request`). The same paste also ships the equipment backend (gear-plan §5.3).
 
 ## 1. The brief (Yair, 30/09/2026)
 
@@ -90,6 +90,6 @@ The organizers' sheet gets an **פעילויות** tab (topic, time, owner, join
 
 #### 5.3 Go-live
 - [x] Yair pastes the new `Code.gs` and deploys a new version. Done 30/09/2026; the live `activities` action answers `ok` with an empty list
-- [ ] Yair opens the sheet: menu **מארגנים → הוספת 3 פעילויות לדוגמה** (the menu appears after a reload of the sheet)
+- [x] Yair opens the sheet: menu **מארגנים → הוספת 3 פעילויות לדוגמה** (the menu appears after a reload of the sheet)
 - [x] ~~Live check with a test family, then clean up~~ — dropped 30/09/2026. A test registration and its join leave rows in the live sheet that only a hand edit removes (a cancel keeps its row by design). The write logic is covered by the vm tests on this same `Code.gs`, and running the demo menu exercises the live sheet store (tab creation, writing, reading back)
-- [ ] After the menu has run: read the live list back and confirm the 3 demos (a session, read-only)
+- [x] After the menu has run: read the live list back and confirm the 3 demos (a session, read-only). 30/09/2026: 3 activities (ids 1 to 3), times kept as text, owner המארגנים, capacity and ages right. The live page at 360px shows them in the list and in a 3-day calendar, with no horizontal scroll and no page errors
