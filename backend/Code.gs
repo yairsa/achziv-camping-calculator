@@ -1,15 +1,18 @@
-// Registration backend — Google Apps Script bound to the group's Google Sheet.
+// Registration backend - Google Apps Script bound to the group's Google Sheet.
 // Setup: see backend/SETUP.md. The site talks to this through the web-app URL in prices.js (apiUrl).
 //
 // Actions (POST body is JSON, sent as text/plain to avoid a CORS preflight):
-//   save    {user, pin, family, data, nights, maxPeople, full, group}  → create, or update if the pin matches
-//   load    {user, pin}                                                 → the saved calculator state
-//   delete  {user, pin}                                                 → remove the entry
-//   summary {}   (also GET)                                             → families + people per night, no names
+//   save    {user, pin, family, data, nights, maxPeople, full, group}  -> create, or update if the pin matches
+//   load    {user, pin}                                                 -> the saved calculator state
+//   delete  {user, pin}                                                 -> remove the entry
+//   summary {}   (also GET)                                             -> families + people per night, no names
 
-var SHEET_NAME = 'הרשמות';
-var HEAD = ['שם משתמש', 'שם להצגה', 'עודכן', 'לנים (מקסימום)', 'לנים לפי לילה', 'מחיר מלא', 'מחיר קבוצתי',
-            'נתונים', 'pinHash', 'ניסיונות כושלים'];
+// Hebrew strings are written as \u escapes so the file is pure ASCII and survives any copy-paste.
+// SHEET_NAME = 'Registrations'; HEAD = user, display name, updated, max people, people per night,
+// full price, group price, data, pinHash, failed attempts.
+var SHEET_NAME = '\u05d4\u05e8\u05e9\u05de\u05d5\u05ea';
+var HEAD = ['\u05e9\u05dd \u05de\u05e9\u05ea\u05de\u05e9', '\u05e9\u05dd \u05dc\u05d4\u05e6\u05d2\u05d4', '\u05e2\u05d5\u05d3\u05db\u05df', '\u05dc\u05e0\u05d9\u05dd (\u05de\u05e7\u05e1\u05d9\u05de\u05d5\u05dd)', '\u05dc\u05e0\u05d9\u05dd \u05dc\u05e4\u05d9 \u05dc\u05d9\u05dc\u05d4', '\u05de\u05d7\u05d9\u05e8 \u05de\u05dc\u05d0', '\u05de\u05d7\u05d9\u05e8 \u05e7\u05d1\u05d5\u05e6\u05ea\u05d9',
+            '\u05e0\u05ea\u05d5\u05e0\u05d9\u05dd', 'pinHash', '\u05e0\u05d9\u05e1\u05d9\u05d5\u05e0\u05d5\u05ea \u05db\u05d5\u05e9\u05dc\u05d9\u05dd'];
 var MAX_FAILS = 5;
 
 function doGet() { return json_(route({ action: 'summary' }, sheetStore_())); }
@@ -138,11 +141,11 @@ function sheetStore_() {
   if (!salt) { salt = Utilities.getUuid(); props.setProperty('SALT', salt); }
 
   function nightsText(n) {
-    return Object.keys(n || {}).sort().map(function (k) { return k.slice(8, 10) + '/' + k.slice(5, 7) + ': ' + n[k]; }).join(' · ');
+    return Object.keys(n || {}).sort().map(function (k) { return k.slice(8, 10) + '/' + k.slice(5, 7) + ': ' + n[k]; }).join(' \u00b7 ');
   }
   function parseNights(t) {
     var out = {};
-    String(t || '').split(' · ').forEach(function (p) {
+    String(t || '').split(' \u00b7 ').forEach(function (p) {
       var m = /^(\d\d)\/(\d\d): (\d+)$/.exec(p);
       if (m) out['2026-' + m[2] + '-' + m[1]] = +m[3];
     });
