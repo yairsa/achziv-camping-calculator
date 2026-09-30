@@ -2,7 +2,7 @@
 
 > **Open questions for Yair:** none. The decisions in §2 were derived from the brief (30/09/2026). Say if any is wrong.
 
-**Status:** planned 30/09/2026, not started. Next: first unticked box in §4.
+**Status:** built 30/09/2026, all 9 gates green. Next: the last box of §4.4 (push, check live).
 
 ## 1. The brief (Yair, 30/09/2026)
 
@@ -41,21 +41,28 @@
 ## 4. Tasks
 
 #### 4.1 Tour engine
-- [ ] `tour.js`: steps `{target, title, text, place}`, highlight + bubble + arrow, next/back/skip, step counter, Esc, focus into the bubble and back after, scroll the target into view under the fixed bars
-- [ ] Seen-flags in `achziv-tour-v1`. The welcome tour on the first visit; tab tours on the first `tabshown` of that tab, queued behind the welcome tour
-- [ ] **?** button in the header: replay the current tab's tour
-- [ ] Styles in `style.css`, light and dark; stamp
+- [x] `tour.js`: steps `{target, title, text, top}`, highlight + bubble + arrow, next/back/skip, step counter, Esc, focus into the bubble and back after, scroll the target into view under the fixed bars
+- [x] Seen-flags in `achziv-tour-v1`. The welcome tour on the first visit; tab tours on the first `tabshown` of that tab, queued behind the welcome tour
+- [x] **?** button in the header: replay the current tab's tour
+- [x] Styles in `style.css`, light and dark; stamp
 
 #### 4.2 Content
-- [ ] Welcome tour (8 steps, §2), with the disclaimer in step 1
-- [ ] ציוד, פעילויות, טיפים tours
-- [ ] The permanent short disclaimer note on the site (all tabs), wording as §2
+- [x] Welcome tour (8 steps, §2), with the disclaimer in step 1
+- [x] ציוד, פעילויות, טיפים tours
+- [x] The permanent short disclaimer note on the site (all tabs), wording as §2
 
 #### 4.3 Share
-- [ ] `share.js`: header button, `navigator.share` or a WhatsApp / copy-link menu
-- [ ] The modal after the first successful registration, shown once
+- [x] `share.js`: header button, `navigator.share` or a WhatsApp / copy-link menu
+- [x] The modal after the first successful registration, shown once
 
 #### 4.4 Gate
-- [ ] `tests/tour.e2e.js` (headless, 360px, backend mocked): welcome tour on the first visit, every step's target visible and not covered by its bubble, skip is remembered, each tab tour runs once on first opening, ? replays, no horizontal scroll, no page errors. Share: the button, and the modal once after the first save only
-- [ ] Existing e2e tests skip the tours; all 9 suites green; add `node tests/tour.e2e.js` to the gates in `CLAUDE.md`
+- [x] `tests/tour.e2e.js` (headless, 360px, backend mocked): welcome tour on the first visit, every step's target visible and not covered by its bubble, skip is remembered, each tab tour runs once on first opening, ? replays, no horizontal scroll, no page errors. Share: the button, and the modal once after the first save only
+- [x] Existing e2e tests skip the tours; all 9 suites green; add `node tests/tour.e2e.js` to the gates in `CLAUDE.md`
 - [ ] Push (Pages is live about 1 minute later), then check the live page headlessly
+
+#### Notes from the build (30/09/2026)
+- **Headings do not get the panels' `scroll-margin`**: it is set on `.card` and `[id]` only, so `scrollIntoView` put an `h2` target under the tab row and the calculator's bar. `bringIn()` in `tour.js` measures the bars that are pinned now (excluding a bar that holds the target) and scrolls the target just below them, re-measuring, since the scroll itself can pin a bar. Mutation-checked: going back to `scrollIntoView` reddens `tour.e2e.js` ("target under a fixed bar").
+- **The arrow is its own fixed element**, not a child of the bubble: the bubble has to scroll inside when neither side of the target has room, and a scrolling box clips a child that sticks out.
+- **Tab tours wait for their content** (`ready`, up to 6s): the tips tools and the activity rows appear only after the data loads. A step whose target is still missing is left out, and the counter counts only the steps shown.
+- **The other suites opt out with `window.ACHZIV_NOTOUR`** set by an init script. That survives every `goto` and `localStorage.clear()` in those tests, where seen-flags would not.
+- The share modal's "once" is its own flag (`achziv-shared-offer`), mutation-checked ("the modal a second time").

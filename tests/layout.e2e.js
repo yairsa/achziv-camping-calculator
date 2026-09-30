@@ -8,6 +8,7 @@ const CHROME = process.env.CHROME || 'C:/Program Files/Google/Chrome/Application
 (async () => {
   const browser = await chromium.launch({ executablePath: CHROME, headless: true });
   const page = await browser.newPage({ viewport: { width: 360, height: 640 } });
+  await page.addInitScript(() => { window.ACHZIV_NOTOUR = 1; });   // no guided tours or share modal here: tour.e2e.js covers them
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
   await page.route('https://**', r => r.abort());

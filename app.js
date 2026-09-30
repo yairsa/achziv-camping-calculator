@@ -349,6 +349,7 @@
     });
     if (focus) tab.focus();
     try { history.replaceState(null, '', '#' + tab.id.replace('tab-', '')); } catch (e) { /* ignore */ }
+    document.dispatchEvent(new CustomEvent('tabshown', { detail: tab.id.replace('tab-', '') }));   // tour.js
   }
   tabs.forEach(function (t, i) {
     t.addEventListener('click', function () { selectTab(t); });
@@ -536,6 +537,7 @@
       regMsg(res.created ? 'נרשמתם! אפשר לחזור ולעדכן עם אותו שם וקוד.' : 'ההרשמה עודכנה — הפרטים הקודמים הוחלפו בחדשים.', 'good');
       renderGroup(res.summary);
       showKeep(c);
+      if (res.created) document.dispatchEvent(new CustomEvent('registered'));   // share.js offers to share
     });
   }
 

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=4d25be8e">
+  <link rel="stylesheet" href="style.css?v=661863d8">
 </head>
 <body>
   <a class="skip" href="#main">דלג לתוכן</a>
@@ -16,6 +16,11 @@
   <header class="top">
     <h1>פארק אכזיב אוקטובר 2026 - מחשבון לינה</h1>
     <p class="sub">קמפינג קבוצתי · חניון לילה גן לאומי אכזיב — <strong>החניון הצפוני</strong> · 06/10 עד 13/10/2026</p>
+    <div class="top-tools">
+      <button type="button" id="share-btn" class="btn-secondary" aria-controls="share-menu" aria-expanded="false">שיתוף עם חברים</button>
+      <button type="button" id="tour-help" class="btn-secondary" aria-label="הדרכה: סיור באתר">?</button>
+      <div id="share-menu" class="share-menu" hidden></div>
+    </div>
   </header>
 
   <nav class="tabs" role="tablist" aria-label="חלקי האתר">
@@ -363,13 +368,28 @@
     </section>
   </main>
 
+  <!-- the site-wide note, on every tab (docs/tour-plan.md §2) -->
+  <footer class="site-note">
+    אתר לא רשמי ומייעץ בלבד, שבנה אחד מחברי הקבוצה בשביל הקבוצה. הוא לא קשור לרשות הטבע והגנים או לחניון, ולא מתחייב לדבר. ט.ל.ח.
+    לא נאספים פרטים אישיים: רשימת הציוד נשמרת רק בדפדפן שלכם, והרשמה שומרת רק את השם שבחרתם, מספר הלנים והתאריכים.
+  </footer>
+
+  <dialog id="share-dlg" class="adlg" aria-labelledby="share-dlg-title">
+    <h2 id="share-dlg-title">נרשמתם!</h2>
+    <p>רוצים לשתף את האתר עם משפחות נוספות מהקבוצה?</p>
+    <div class="actions" id="share-dlg-actions"></div>
+    <p class="msg good" id="share-dlg-msg" role="status" aria-live="polite"></p>
+  </dialog>
+
   <script src="prices.js?v=9ef8ec21"></script>
-  <script src="app.js?v=bd1ca4a2"></script>
+  <script src="app.js?v=78fe87df"></script>
   <script src="search.js?v=31352673"></script>
   <script src="tips.js?v=34713f3a"></script>
   <script src="gear-seed.js?v=c6a3d750"></script>
   <script src="gear.js?v=e1b0dcc9"></script>
   <script src="acts-demo.js?v=b2f8d20b"></script>
   <script src="activities.js?v=087e5319"></script>
+  <script src="share.js?v=1d3c3429"></script>
+  <script src="tour.js?v=a284ba77"></script>
 </body>
 </html>

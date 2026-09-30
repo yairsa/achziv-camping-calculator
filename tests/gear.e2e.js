@@ -24,6 +24,7 @@ let ts = store(), oldBackend = false, dropNext = 0, delay = 0, calls = [];
 (async () => {
   const browser = await chromium.launch({ executablePath: CHROME, headless: true });
   const page = await browser.newPage({ viewport: { width: 360, height: 780 } });
+  await page.addInitScript(() => { window.ACHZIV_NOTOUR = 1; });   // no guided tours or share modal here: tour.e2e.js covers them
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));
   page.on('dialog', d => d.accept());
