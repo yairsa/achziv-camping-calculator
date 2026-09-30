@@ -397,6 +397,7 @@
           });
       });
   }
+  window.CampApi = { api: api, esc: esc };   // for tips.js
   function regMsg(text, kind) {
     var m = document.getElementById('reg-msg');
     m.textContent = text; m.className = 'msg' + (kind ? ' ' + kind : '');

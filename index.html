@@ -22,6 +22,7 @@
     <button role="tab" id="tab-calc"   aria-controls="panel-calc"   aria-selected="true">מחשבון</button>
     <button role="tab" id="tab-prices" aria-controls="panel-prices" aria-selected="false" tabindex="-1">מחירון</button>
     <button role="tab" id="tab-place"  aria-controls="panel-place"  aria-selected="false" tabindex="-1">על המקום ונגישות</button>
+    <button role="tab" id="tab-tips"   aria-controls="panel-tips"   aria-selected="false" tabindex="-1">טיפים</button>
   </nav>
 
   <main id="main">
@@ -200,6 +201,58 @@
           דוא"ל: <a href="mailto:gl-achziv-h@npa.org.il">gl-achziv-h@npa.org.il</a></p>
       </div>
     </section>
+
+    <!-- ===== Tips ===== -->
+    <section role="tabpanel" id="panel-tips" aria-labelledby="tab-tips" hidden>
+      <div class="card">
+        <h2>טיפים מהקבוצה</h2>
+        <p class="hint">טיפים שחברי הקבוצה כתבו — ציוד, לינה, אוכל, ילדים ועוד. כל טיפ ותגובה מופיעים באתר אחרי אישור של המארגן.</p>
+        <p id="tips-state" class="msg" role="status" aria-live="polite">טוען טיפים…</p>
+        <div id="tips-tools" class="tips-tools" hidden>
+          <div class="field">
+            <label for="tips-q">חיפוש</label>
+            <input id="tips-q" type="search" autocomplete="off" placeholder="למשל: אוהל, צל, ילדים">
+          </div>
+          <div class="field">
+            <label for="tips-cat">קטגוריה</label>
+            <select id="tips-cat"><option value="">הכל</option></select>
+          </div>
+          <button type="button" id="tips-write-btn" class="btn-secondary">+ כתיבת טיפ חדש</button>
+        </div>
+        <p id="tips-count" class="hint" aria-live="polite"></p>
+      </div>
+
+      <div id="tips-mine"></div>
+      <div id="tips-list"></div>
+
+      <div class="card" id="tip-write" hidden>
+        <h2>כתיבת טיפ חדש</h2>
+        <p class="hint">רעיון אחד בכל טיפ: כותרת קצרה ועד 400 תווים. הטיפ יופיע אחרי אישור.</p>
+        <form id="tip-form" novalidate>
+          <div class="field">
+            <label for="tip-cat">קטגוריה</label>
+            <select id="tip-cat" required></select>
+          </div>
+          <div class="field">
+            <label for="tip-title">כותרת</label>
+            <input id="tip-title" type="text" maxlength="60" autocomplete="off" required placeholder="למשל: יתדות ארוכות לחול">
+          </div>
+          <div class="field">
+            <label for="tip-text">הטיפ</label>
+            <textarea id="tip-text" rows="4" maxlength="400" required aria-describedby="tip-left"></textarea>
+            <small id="tip-left" class="left"></small>
+          </div>
+          <div class="field">
+            <label for="tip-author">שם (לא חובה)</label>
+            <input id="tip-author" type="text" maxlength="40" autocomplete="off">
+          </div>
+          <div class="hp" aria-hidden="true"><label>לא למילוי <input id="tip-hp" type="text" tabindex="-1" autocomplete="off"></label></div>
+          <div id="tip-similar" class="similar" hidden aria-live="polite"></div>
+          <div class="actions"><button type="submit" class="btn-primary">שליחה לאישור</button></div>
+          <p id="tip-msg" class="msg" role="status" aria-live="polite"></p>
+        </form>
+      </div>
+    </section>
   </main>
 
   <footer class="foot">
@@ -208,5 +261,7 @@
 
   <script src="prices.js"></script>
   <script src="app.js"></script>
+  <script src="search.js"></script>
+  <script src="tips.js"></script>
 </body>
 </html>

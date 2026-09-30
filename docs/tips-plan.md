@@ -2,7 +2,7 @@
 
 > **Open questions for Yair:** none. Q1 and Q2 were answered 30/09/2026; the answers are in §4 and §5.
 
-**Status:** designed and decided 30/09/2026. **Building** — §6.1 backend done; next: first unticked box in §6.2. Not live yet.
+**Status:** designed and decided 30/09/2026. **Built** — §6.1 backend and §6.2 site done. The site is pushed and says "בקרוב" until §6.3: Yair pastes and deploys `Code.gs`.
 
 ## 1. What it is
 
@@ -76,12 +76,18 @@ Same Google Sheet and Apps Script as registration. Two new tabs in the registrat
 - [x] Gate: `node tests/backend.test.js` green, `python backend/build.py --check` clean
 
 #### 6.2 Site
-- [ ] Tab **טיפים**: category filter, search box, tip cards with collapsed comments
+- [x] Tab **טיפים**: category filter, search box, tip cards with collapsed comments
+  - `tips.js`. It loads only when the tab first opens, so calculator visitors cost the backend nothing. Category counts appear in the filter.
+  - The live script from before tips answers `bad_request`. The tab then says "הטיפים יופעלו כאן בקרוב" and hides the form, so it is safe to push before §6.3.
 - [x] Hebrew normaliser (final letters, niqqud, one-letter prefixes) + tests
   - done with §6.1, in `search.js` and tested in `tests/backend.test.js`. A second prefix is stripped only after ו/ש, or when it is ה (והאוהל, מהחוף), so בלילה keeps its ל. Stop words go through the same normaliser.
-- [ ] Write-a-tip form with a live "similar tips" panel
-- [ ] Comment form under each tip; "ממתין לאישור" shown from this browser's own submissions
-- [ ] Gate: `node tests/calc.test.js` + a headless browser run of submit → approve in sheet → visible
+- [x] Write-a-tip form with a live "similar tips" panel
+  - **Decided (Claude, 30/09):** the panel shows a tip only when it scores 2 or more (a title word, or two text words). One shared word in the text alone was noise. "להוסיף תגובה במקום?" opens that tip's comment form with the draft already filled in.
+- [x] Comment form under each tip; "ממתין לאישור" shown from this browser's own submissions
+  - kept in localStorage `achziv-tips-mine`, dropped once it comes back approved, or after 3 weeks (rejected or merged)
+  - a retry of the same content reuses its client id, so Google's dropped replies never make duplicates
+- [x] Gate: `node tests/calc.test.js` + a headless browser run of submit → approve in sheet → visible
+  - `node tests/tips.e2e.js`: headless Chrome at 360px against `Code.gs` in Node's vm. Covers tips and comments, dropped replies, the old live script, and no horizontal scroll.
 
 #### 6.3 Go-live
 - [ ] Yair pastes the new `Code.gs` and deploys a new version (same URL)

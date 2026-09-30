@@ -3,7 +3,7 @@
 Static RTL site on GitHub Pages (`main` = live, about 1 minute after a push; no CI, no cost) plus a Google Apps Script backend bound to Yair's registration sheet. Live at https://yairsa.github.io/achziv-camping-calculator/
 
 ## Gates — run before every commit
-- `node tests/calc.test.js` · `node tests/backend.test.js` · `python backend/build.py --check`
+- `node tests/calc.test.js` · `node tests/backend.test.js` · `python backend/build.py --check` · `node tests/tips.e2e.js` (headless Chrome, backend mocked; uses the website repo's `playwright-core`, or set `PLAYWRIGHT_CORE`)
 - UI changes: drive the page in headless Chrome (Playwright with `executablePath` = the installed Chrome) at 360px width. Check for no horizontal scroll and no page errors. Mock `https://script.google.com/**` with `backend/Code.gs` running in Node's `vm` — never create test data in the live sheet except for a deliberate live check, and delete it afterwards.
 
 ## Backend — the gotchas that cost hours on 30/09/2026
