@@ -158,8 +158,11 @@ let oldBackend = false, dropNext = 0, delay = 0, calls = [];
   assert.ok((await msg()).includes('כבר הצטרפו יותר'), await msg());
   await page.fill('#af-cap', '8');
   await page.fill('#af-topic', 'סדנת עפיפונים ענקיים');
+  await page.fill('#af-host', 'דנה מהאוהל הכחול');                            // optional host
   await page.click('#af-save');
   await waitMsg(/השינויים נשמרו/);
+  assert.ok((await text('#act-dlg-body')).includes('מנחה: דנה מהאוהל הכחול'));
+  assert.strictEqual(acts.find(a => a.id === 1).host, 'דנה מהאוהל הכחול');
   assert.strictEqual(await text('#act-dlg-title'), 'סדנת עפיפונים ענקיים');
   assert.ok((await text('#act-places')).includes('נשארו 3 מקומות (5 מתוך 8)'));
   await page.click('#act-dlg-close');
@@ -191,23 +194,18 @@ let oldBackend = false, dropNext = 0, delay = 0, calls = [];
   assert.notStrictEqual(await bg('.arow[data-id="1"]'), await bg('.arow[data-id="2"]'), 'list rows share a colour');
   await noHScroll('list');
 
-  // ---- calendar: 3 days at a time on a phone, blocks open the details ----
+  // ---- calendar: only days and hours that have something; blocks open the details ----
   await page.click('#acts-view-cal');
   assert.ok(await page.isHidden('#acts-list') && await page.isVisible('#acts-cal'));
-  assert.deepStrictEqual(await page.locator('.calhead span').allInnerTexts(), ['', 'ג׳ 06/10', 'ד׳ 07/10', 'ה׳ 08/10']);
+  assert.deepStrictEqual(await page.locator('.calhead span').allInnerTexts(), ['', 'ג׳ 06/10', 'ד׳ 07/10'], 'empty days should not show');
   assert.strictEqual(await page.locator('.ablock').count(), 3);                // the night event is split over two days
-  assert.strictEqual(await text('.calhours span:first-child'), '08:00', 'the tail of last night should not stretch the day to 00:00');
+  assert.deepStrictEqual(await page.locator('.calhours span').allInnerTexts(), ['00:00', '⋯', '10:00', '11:00', '⋯', '21:00', '22:00', '23:00'],
+    'only the hours with something in them, empty runs folded');
   assert.ok((await text('.calday:nth-child(3) .ablock[data-id="2"]')).startsWith('עד 01:00'), 'the tail is drawn at the top');
+  assert.strictEqual(await page.locator('#acts-prev').count(), 0, 'two days need no paging');
   // each audience its own background: kids (id 1) and adults (id 2) differ, in the calendar and in the list
   assert.notStrictEqual(await bg('.ablock[data-id="1"]'), await bg('.ablock[data-id="2"]'), 'audiences share a colour');
   assert.ok(!/rgba\(0, 0, 0, 0\)|transparent/.test(await bg('.ablock[data-id="2"]')));
-  assert.ok(await page.isDisabled('#acts-prev'));
-  await page.click('#acts-next');
-  assert.deepStrictEqual((await page.locator('.calhead span').allInnerTexts()).slice(1), ['ו׳ 09/10', 'ש׳ 10/10', 'א׳ 11/10']);
-  await page.click('#acts-next');
-  assert.deepStrictEqual((await page.locator('.calhead span').allInnerTexts()).slice(1), ['א׳ 11/10', 'ב׳ 12/10', 'ג׳ 13/10']);   // the last page stays full
-  assert.ok(await page.isDisabled('#acts-next'));
-  await page.click('#acts-prev'); await page.click('#acts-prev');
   await noHScroll('calendar');
   await page.locator('.ablock[data-id="1"]').click();
   assert.strictEqual(await text('#act-dlg-title'), 'סדנת עפיפונים ענקיים');
@@ -222,13 +220,29 @@ let oldBackend = false, dropNext = 0, delay = 0, calls = [];
   assert.strictEqual(acts.find(a => a.id === 1).status, 'בוטל');
   assert.strictEqual(await page.locator('.ablock[data-id="1"]').count(), 0);
 
-  // ---- desktop: every day at once ----
+  // ---- more days: a phone pages 3 at a time, a computer shows them all ----
+  for (const [i, d] of [[1, '2026-10-09'], [2, '2026-10-11']])
+    ctx.route({ action: 'saveActivity', user: 'Levi', pin: '5555', clientId: 'act-page-000' + i,
+      activity: { topic: 'פעילות ' + i, start: d + 'T16:00', end: d + 'T17:00', tag: 'לכולם' } }, reg, null, as);
+  await page.reload();
+  await page.click('#tab-acts');
+  await page.click('#acts-view-cal');
+  const heads = async () => (await page.locator('.calhead span').allInnerTexts()).slice(1);
+  assert.deepStrictEqual(await heads(), ['ג׳ 06/10', 'ד׳ 07/10', 'ו׳ 09/10']);
+  assert.ok(await page.isDisabled('#acts-prev'));
+  await page.click('#acts-next');
+  assert.deepStrictEqual(await heads(), ['ד׳ 07/10', 'ו׳ 09/10', 'א׳ 11/10'], 'the last page stays full');
+  assert.ok(await page.isDisabled('#acts-next'));
+  await noHScroll('calendar paging');
   await page.setViewportSize({ width: 1000, height: 800 });
   await page.waitForTimeout(100);
-  assert.strictEqual(await page.locator('.calhead span').count(), 9);
+  assert.deepStrictEqual(await heads(), ['ג׳ 06/10', 'ד׳ 07/10', 'ו׳ 09/10', 'א׳ 11/10']);
   assert.strictEqual(await page.locator('#acts-prev').count(), 0);
   await page.setViewportSize({ width: 360, height: 780 });
-  await page.click('#acts-view-list');
+  acts.filter(a => a.clientId.startsWith('act-page-')).forEach(a => { a.status = 'בוטל'; });
+  await page.reload();                                                       // this browser's copy follows
+  await page.click('#tab-acts');
+  await page.waitForFunction(() => document.querySelectorAll('.arow').length === 1, null, { timeout: 15000 });
 
   // ---- slow server: the cached copy at once ----
   delay = 3000;

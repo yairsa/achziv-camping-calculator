@@ -16,7 +16,7 @@
   var TAG_CLASS = { 'לכולם': 't-all', 'מבוגרים': 't-adult', 'ילדים': 't-kid' };   // colours in style.css
   function tc(t) { return TAG_CLASS[t] ? ' ' + TAG_CLASS[t] : ''; }
   var WD = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
-  var HOUR_PX = 48, PHONE_DAYS = 3;
+  var HOUR_PX = 48, GAP_PX = 14, PHONE_DAYS = 3;
   var ERR = {
     not_registered: 'לא מצאנו הרשמה בשם הזה. רק משפחות רשומות יכולות להוסיף פעילות או להצטרף. נרשמים בלשונית "מחשבון".',
     wrong_pin: 'הקוד לא תואם את ההרשמה בשם הזה.',
@@ -44,7 +44,7 @@
   var DEMO = /(^\?|&)demo(=|&|$)/.test(location.search);
   function demoActs() {
     return DEMO_ACTS.map(function (d, i) {
-      return { id: i + 1, owner: DEMO_OWNER, topic: d.topic, description: d.description + DEMO_NOTE, start: d.start, end: d.end,
+      return { id: i + 1, owner: DEMO_OWNER, topic: d.topic, host: d.host || '', description: d.description + DEMO_NOTE, start: d.start, end: d.end,
                tag: d.tag, ageFrom: d.ageFrom == null ? null : d.ageFrom, ageTo: d.ageTo == null ? null : d.ageTo,
                capacity: +d.capacity || 0, required: d.required, suggested: d.suggested, joined: [], taken: 0 };
     });
@@ -104,7 +104,7 @@
   function matches(a, words) {
     if (tag && a.tag !== tag && !(a.tag === 'לכולם' && tag !== 'לכולם')) return false;   // "for everyone" suits both
     if (!words.length) return true;
-    var forms = searchFormsOf_([a.topic, a.description, a.owner, a.required, a.suggested, a.tag].join(' '));
+    var forms = searchFormsOf_([a.topic, a.host, a.description, a.owner, a.required, a.suggested, a.tag].join(' '));
     return words.every(function (w) { return searchHit_(w, forms); });
   }
   function shown() {
@@ -120,6 +120,7 @@
       '<span class="atopic">' + esc(a.topic) + '</span>' +
       '<span class="ameta"><span class="atag">' + esc(tagText(a)) + '</span> · ' + esc(placesText(a)) +
       (j ? ' · <strong class="amine">הצטרפתם (' + j.count + ')</strong>' : '') +
+      (a.host ? ' · מנחה: ' + esc(a.host) : '') +
       (isMine(a.owner) ? ' · <strong class="amine">שלכם</strong>' : '') + '</span>' +
       '</button></li>';
   }
@@ -138,8 +139,9 @@
   // ---------- calendar: days as columns, hours as rows ----------
   function segments(list, d) {                     // the part of each activity inside day d, in minutes
     var segs = list.filter(function (a) { return onDay(a, d); }).map(function (a) {
-      var s = a.start.slice(0, 10) < d ? 0 : mins(a.start), e = a.end.slice(0, 10) > d ? 1440 : mins(a.end);
-      return { a: a, s: s, e: Math.max(e, s + 15) };
+      var cont = a.start.slice(0, 10) < d, s = cont ? 0 : mins(a.start), e = a.end.slice(0, 10) > d ? 1440 : mins(a.end);
+      e = Math.min(1440, Math.max(e, s + 15)); s = Math.min(s, e - 15);
+      return { a: a, s: s, e: e, cont: cont };
     }).sort(function (x, y) { return x.s - y.s || y.e - x.e; });
     // side by side when they overlap: a lane each, inside a cluster of overlapping ones
     var cluster = [], end = -1;
@@ -153,22 +155,40 @@
     close();
     return segs;
   }
-  function calDays() {
-    var all = day ? [day] : tripDays();
+  // Only the days that have something on them, a few at a time on a phone.
+  function calDays(list) {
+    var all = (day ? [day] : tripDays()).filter(function (d) { return list.some(function (a) { return onDay(a, d); }); });
     if (!phone.matches || all.length <= PHONE_DAYS) return { days: all, all: all };
     calPage = Math.max(0, Math.min(calPage, all.length - PHONE_DAYS));
     return { days: all.slice(calPage, calPage + PHONE_DAYS), all: all };
   }
-  function renderCal(list) {
-    var cd = calDays(), days = cd.days, from = 8 * 60, to = 22 * 60, cols = days.map(function (d) { return segments(list, d); });
-    // the hours follow what starts or ends in them; the tail of last night's activity is drawn at the top
+  // Only the hours that have something in them. A run of empty hours folds into a thin divider.
+  function hourRows(cols) {
+    var on = {}, rows = [], top = {}, y = 0;
     cols.forEach(function (segs) { segs.forEach(function (g) {
-      if (g.s > 0) from = Math.min(from, Math.floor(g.s / 60) * 60);
-      if (g.s > 0 || g.e > from) to = Math.max(to, Math.ceil(g.e / 60) * 60);
+      for (var h = Math.floor(g.s / 60); h < Math.ceil(g.e / 60); h++) on[h] = true;
     }); });
-    cols.forEach(function (segs) { segs.forEach(function (g) { if (g.s < from) { g.cont = true; g.s = from; g.e = Math.max(g.e, from + 30); } }); });
-    var h = (to - from) / 60 * HOUR_PX, hours = '';
-    for (var m = from; m < to; m += 60) hours += '<span style="top:' + ((m - from) / 60 * HOUR_PX) + 'px">' + ('0' + m / 60).slice(-2) + ':00</span>';
+    Object.keys(on).map(Number).sort(function (x, z) { return x - z; }).forEach(function (h, i, hs) {
+      if (i && h !== hs[i - 1] + 1) { rows.push({ gap: true, top: y }); y += GAP_PX; }
+      rows.push({ h: h, top: y }); top[h] = y; y += HOUR_PX;
+    });
+    function at(m) {                               // minute of the day -> px from the top of the grid
+      var h = Math.floor(m / 60);
+      return top[h] != null ? top[h] + (m - h * 60) / 60 * HOUR_PX : top[h - 1] + HOUR_PX;
+    }
+    return { rows: rows, height: y, at: at };
+  }
+  function renderCal(list) {
+    var cd = calDays(list), days = cd.days;
+    if (!days.length) { $('acts-cal').innerHTML = ''; return; }
+    var cols = days.map(function (d) { return segments(list, d); }), hr = hourRows(cols), h = hr.height;
+    var hours = hr.rows.map(function (r) {
+      return r.gap ? '<span class="calgapmark" style="top:' + r.top + 'px" aria-hidden="true">⋯</span>'
+                   : '<span style="top:' + r.top + 'px">' + ('0' + r.h).slice(-2) + ':00</span>';
+    }).join('');
+    var lines = hr.rows.map(function (r) {
+      return r.gap ? '<i class="calgap" style="top:' + r.top + 'px;height:' + GAP_PX + 'px"></i>' : '<i class="calline" style="top:' + r.top + 'px"></i>';
+    }).join('');
     var nav = '';
     if (days.length < cd.all.length) {
       var first = cd.all.indexOf(days[0]);
@@ -182,10 +202,10 @@
       '<div class="calhead" style="' + grid + '"><span></span>' + days.map(function (d) { return '<span>' + esc(dayLabel(d)) + '</span>'; }).join('') + '</div>' +
       '<div class="calbody" style="' + grid + '"><div class="calhours" style="height:' + h + 'px">' + hours + '</div>' +
       cols.map(function (segs) {
-        return '<div class="calday" style="height:' + h + 'px;background-size:100% ' + HOUR_PX + 'px">' + segs.map(function (g) {
-          var w = 100 / g.lanes;
+        return '<div class="calday" style="height:' + h + 'px">' + lines + segs.map(function (g) {
+          var w = 100 / g.lanes, top = hr.at(g.s);
           return '<button type="button" class="ablock' + tc(g.a.tag) + (isFull(g.a) ? ' full' : '') + (myJoin(g.a) || isMine(g.a.owner) ? ' mine' : '') + '" data-id="' + g.a.id + '" ' +
-            'style="top:' + ((g.s - from) / 60 * HOUR_PX) + 'px;height:' + ((g.e - g.s) / 60 * HOUR_PX - 2) + 'px;' +
+            'style="top:' + top + 'px;height:' + (hr.at(g.e) - top - 2) + 'px;' +
             'inset-inline-start:' + (g.lane * w) + '%;width:calc(' + w + '% - 2px)">' +
             '<span class="btime">' + (g.cont ? 'עד ' + esc(hm(g.a.end)) : esc(hm(g.a.start))) + '</span>' + esc(g.a.topic) + '</button>';
         }).join('') + '</div>';
@@ -261,6 +281,7 @@
       '<h2 id="act-dlg-title">' + esc(a.topic) + '</h2>' +
       '<p class="awhen">' + esc(when(a)) + '</p>' +
       '<p><span class="atag' + tc(a.tag) + '">' + esc(tagText(a)) + '</span> · מארגנים: ' + esc(a.owner) + '</p>' +
+      (a.host ? '<p><strong>מנחה:</strong> ' + esc(a.host) + '</p>' : '') +
       (a.description ? '<p class="adesc">' + esc(a.description) + '</p>' : '') +
       (a.required ? '<p><strong>חובה להביא:</strong> ' + esc(a.required) + '</p>' : '') +
       (a.suggested ? '<p><strong>מומלץ להביא:</strong> ' + esc(a.suggested) + '</p>' : '') +
@@ -303,6 +324,7 @@
       '<h2 id="act-dlg-title">' + (a ? 'עריכת פעילות' : 'פעילות חדשה') + '</h2>' +
       '<form id="act-form" novalidate>' + whoBlock('מי מארגנים? שם המשפחה והקוד מההרשמה') +
       '<div class="field"><label for="af-topic">נושא</label><input id="af-topic" type="text" maxlength="60" autocomplete="off" placeholder="למשל: סדנת עפיפונים" value="' + esc(a ? a.topic : '') + '"></div>' +
+      '<div class="field"><label for="af-host">מנחה (לא חובה)</label><input id="af-host" type="text" maxlength="60" autocomplete="off" placeholder="מי מעביר את הפעילות" value="' + esc(a ? a.host || '' : '') + '"></div>' +
       '<div class="field"><label for="af-desc">תיאור (לא חובה)</label><textarea id="af-desc" rows="3" maxlength="600">' + esc(a ? a.description : '') + '</textarea></div>' +
       timeFields('start', 'התחלה', start) + timeFields('end', 'סיום', end) +
       '<fieldset class="atagf"><legend>למי מתאים</legend><div class="chips">' + TAGS.map(function (x) {
@@ -322,7 +344,7 @@
   function readTime(key) { return $('af-' + key + '-day').value + 'T' + $('af-' + key + '-h').value + ':' + $('af-' + key + '-m').value; }
   function readForm() {
     var t = (document.querySelector('input[name="af-tag"]:checked') || {}).value || '';
-    return { topic: $('af-topic').value.trim(), description: $('af-desc').value.trim(),
+    return { topic: $('af-topic').value.trim(), host: $('af-host').value.trim(), description: $('af-desc').value.trim(),
              start: readTime('start'), end: readTime('end'), tag: t,
              ageFrom: t === 'ילדים' ? $('af-from').value.trim() : '', ageTo: t === 'ילדים' ? $('af-to').value.trim() : '',
              capacity: $('af-cap').value.trim(), required: $('af-req').value.trim(), suggested: $('af-sug').value.trim() };
@@ -369,8 +391,8 @@
     var f = readForm(), d = dlg;
     form(d.id);
     dlg.cid = d.cid || dlg.cid; dlg.endTouched = d.endTouched;
-    ['topic', 'desc', 'from', 'to', 'cap', 'req', 'sug'].forEach(function (k, i) {
-      $('af-' + k).value = [f.topic, f.description, f.ageFrom, f.ageTo, f.capacity, f.required, f.suggested][i];
+    ['topic', 'host', 'desc', 'from', 'to', 'cap', 'req', 'sug'].forEach(function (k, i) {
+      $('af-' + k).value = [f.topic, f.host, f.description, f.ageFrom, f.ageTo, f.capacity, f.required, f.suggested][i];
     });
     setTime('start', f.start); setTime('end', f.end);
     document.querySelectorAll('input[name="af-tag"]').forEach(function (r) { r.checked = r.value === f.tag; });

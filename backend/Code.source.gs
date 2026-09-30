@@ -184,7 +184,7 @@ function summary_(store) {
 // cancelled family keeps its row (status "בוטל") so a recorded payment is never lost.
 var ORG_PROP = 'ORG_SHEET_ID';
 var ORG_TABS = { families: 'משפחות', nights: 'לילות', summary: 'סיכום', acts: 'פעילויות' };
-var ORG_ACT_HEAD = ['מתי', 'נושא', 'משפחה מארגנת', 'קהל', 'משתתפים', 'מקומות', 'מי הצטרף'];
+var ORG_ACT_HEAD = ['מתי', 'נושא', 'משפחה מארגנת', 'מנחה', 'קהל', 'משתתפים', 'מקומות', 'מי הצטרף'];
 var ORG_HEAD = ['שם המשפחה', 'סטטוס', 'עודכן', 'תקופות', 'לנים לפי לילה', 'מבוגרים (14+)', 'ילדים (5 עד 13)',
                 'פעוטות (עד 5)', 'הנחות', 'מחיר מלא', 'מחיר קבוצתי'];
 var ORG_MANUAL = ['שולם (₪)', 'הערות מארגנים'];
@@ -601,15 +601,15 @@ function enableAlerts() {
 // join sets the family's count rather than adding to it.
 var ACT_TABS = { acts: 'פעילויות', joins: 'הצטרפויות' };
 var ACT_HEAD = ['מספר', 'סטטוס', 'משפחה מארגנת', 'נושא', 'תיאור', 'התחלה', 'סיום', 'קהל', 'מגיל', 'עד גיל',
-                'מקומות', 'חובה להביא', 'מומלץ להביא', 'נוצר', 'עודכן', 'מזהה שליחה'];
+                'מקומות', 'חובה להביא', 'מומלץ להביא', 'נוצר', 'עודכן', 'מזהה שליחה', 'מנחה'];
 var ACT_COL = { id: 0, status: 1, owner: 2, topic: 3, description: 4, start: 5, end: 6, tag: 7, ageFrom: 8, ageTo: 9,
-                capacity: 10, required: 11, suggested: 12, created: 13, updated: 14, clientId: 15 };
+                capacity: 10, required: 11, suggested: 12, created: 13, updated: 14, clientId: 15, host: 16 };
 var JOIN_HEAD = ['פעילות', 'משפחה', 'משתתפים', 'עודכן'];
 var JOIN_COL = { actId: 0, family: 1, count: 2, updated: 3 };
 var AST = { active: 'פעיל', hidden: 'הוסתר', cancelled: 'בוטל' };
 var ACT_STATUSES = [AST.active, AST.hidden, AST.cancelled];
 var ACT_TAGS = ['לכולם', 'מבוגרים', 'ילדים'];
-var ACT_LIMITS = { topic: 60, description: 600, gear: 200, capacity: 500, join: 30 };
+var ACT_LIMITS = { topic: 60, host: 60, description: 600, gear: 200, capacity: 500, join: 30 };
 var TRIP = { from: '2026-10-06', to: '2026-10-13' };   // the days an activity may fall on
 var MAX_ACTS_PER_FAMILY = 30;
 var ACTS_CACHE = 'acts-v1';
@@ -650,7 +650,7 @@ function findAct_(as, id) {
 function activitiesPublic_(as) {
   var list = as.acts().filter(function (a) { return a.status === AST.active; }).map(function (a) {
     var joined = actJoins_(as, +a.id).map(function (j) { return { family: unguard_(j.family), count: Math.floor(+j.count) }; });
-    return { id: +a.id, owner: unguard_(a.owner), topic: unguard_(a.topic), description: unguard_(a.description),
+    return { id: +a.id, owner: unguard_(a.owner), topic: unguard_(a.topic), host: unguard_(a.host), description: unguard_(a.description),
              start: String(a.start), end: String(a.end), tag: String(a.tag),
              ageFrom: a.ageFrom === '' ? null : +a.ageFrom, ageTo: a.ageTo === '' ? null : +a.ageTo,
              capacity: +a.capacity || 0, required: unguard_(a.required), suggested: unguard_(a.suggested),
@@ -670,6 +670,7 @@ function saveActivity_(req, store, as) {
   var fam = actFamily_(req, store), a = req.activity || {};
   var f = {
     topic: tipText_(String(a.topic || '').replace(/\n/g, ' '), 3, ACT_LIMITS.topic),
+    host: a.host ? tipText_(String(a.host).replace(/\n/g, ' '), 0, ACT_LIMITS.host) : '',     // optional: who leads it
     description: a.description ? tipText_(a.description, 0, ACT_LIMITS.description) : '',
     start: actTime_(a.start), end: actTime_(a.end),
     tag: String(a.tag || ''), ageFrom: '', ageTo: '', capacity: '',
@@ -749,7 +750,7 @@ function addDemoActivities_(as) {
   DEMO_ACTS.forEach(function (d) {
     if (as.acts().some(function (x) { return x.clientId === d.clientId; })) return;
     var row = { id: nextId_(as.acts()), status: AST.active, owner: DEMO_OWNER, created: as.now(), updated: '', clientId: d.clientId,
-                topic: d.topic, description: d.description + DEMO_NOTE, start: d.start, end: d.end, tag: d.tag,
+                topic: d.topic, host: d.host || '', description: d.description + DEMO_NOTE, start: d.start, end: d.end, tag: d.tag,
                 ageFrom: d.ageFrom == null ? '' : d.ageFrom, ageTo: d.ageTo == null ? '' : d.ageTo, capacity: d.capacity,
                 required: safeCell_(d.required), suggested: safeCell_(d.suggested) };
     as.addAct(row); n++;
@@ -767,7 +768,7 @@ function organizerActivities_(pub) {
   return pub.activities.map(function (a) {
     var who = a.tag + (a.ageFrom != null || a.ageTo != null
       ? ' (' + (a.ageFrom != null ? a.ageFrom : '') + '–' + (a.ageTo != null ? a.ageTo : '') + ')' : '');
-    return [actWhen_(a), a.topic, a.owner, who, a.taken, a.capacity || 'ללא הגבלה',
+    return [actWhen_(a), a.topic, a.owner, a.host, who, a.taken, a.capacity || 'ללא הגבלה',
             a.joined.map(function (j) { return j.family + ' ' + j.count; }).join(' · ')];
   });
 }

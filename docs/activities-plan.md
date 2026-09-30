@@ -38,7 +38,7 @@
 
 | tab | columns |
 |---|---|
-| **פעילויות** | id · status (פעיל / הוסתר / בוטל) · owner family · topic · description · start · end · tag · age from · age to · capacity · required equipment · suggested equipment · created · updated |
+| **פעילויות** | id · status (פעיל / הוסתר / בוטל) · owner family · topic · description · start · end · tag · age from · age to · capacity · required equipment · suggested equipment · created · updated · client id · host (מנחה, optional) |
 | **הצטרפויות** | activity id · family · participants · updated |
 
 The organizers' sheet gets an **פעילויות** tab (topic, time, owner, joined / capacity), synced the same way as families.
@@ -82,6 +82,11 @@ The organizers' sheet gets an **פעילויות** tab (topic, time, owner, join
   - a menu item, because the live script is not deployed yet and a write through the site needs a family's code. Tested in `tests/backend.test.js`: each demo passes the same checks as a family's own activity
 - [x] Preview link **`?demo#acts`** (Yair was away from the computer, 30/09/2026): shows the same three demos (`acts-demo.js`, also inlined into Code.gs) in this browser only. Nothing is sent, cached or saved, and a join or save says so. Live: https://yairsa.github.io/achziv-camping-calculator/?demo#acts
 - [x] Gate: all 8 suites green
+
+#### 5.2c Additions (Yair, 30/09/2026: *"Each event should have מנחה field, optional"* · *"Calendar view — show only relevant days/hours"*)
+- [x] **מנחה** (optional, one line, up to 60 characters): a new last column `מנחה` in the פעילויות tab, a field in the form, a line in the details, the list row and the search. Also a column in the organizers' tab
+- [x] Calendar shows only the days that have an activity (after the filters), and only the hours that have one. A run of empty hours folds into a thin hatched divider (⋯). A phone pages 3 of those days at a time
+- [x] Gate: all 8 suites green. Mutation-checked: showing empty days, keeping empty hours and not sending the host each turn the e2e red
 
 #### 5.3 Go-live
 - [ ] Yair pastes the new `Code.gs` and deploys a new version

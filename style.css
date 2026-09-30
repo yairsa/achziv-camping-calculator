@@ -315,10 +315,12 @@ a.btn-secondary { display: inline-block; text-decoration: none; border-style: so
 .calhead, .calbody { display: grid; gap: 0 2px; }
 .calhead { font-size: .85rem; font-weight: 700; text-align: center; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
 .calhours { position: relative; font-size: .75rem; color: var(--muted); }
-.calhours span { position: absolute; inset-inline-start: 0; transform: translateY(-50%); font-variant-numeric: tabular-nums; }
-.calhours span:first-child { transform: none; }
-.calday { position: relative; background-image: linear-gradient(to bottom, var(--line) 1px, transparent 1px);
-  border-inline-start: 1px solid var(--line); }
+.calhours span { position: absolute; inset-inline-start: 0; line-height: 1.2; padding-top: 1px; font-variant-numeric: tabular-nums; }
+.calday { position: relative; border-inline-start: 1px solid var(--line); }
+.calline { position: absolute; inset-inline: 0; height: 1px; background: var(--line); }
+/* a run of empty hours, folded */
+.calgap { position: absolute; inset-inline: 0; background: repeating-linear-gradient(135deg, var(--line) 0 2px, transparent 2px 6px); opacity: .7; }
+.calhours .calgapmark { line-height: 12px; padding: 0; font-weight: 700; }
 .ablock { position: absolute; overflow: hidden; font: inherit; font-size: .78rem; line-height: 1.25; text-align: start;
   color: var(--text); background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 6px;
   padding: 2px 4px; cursor: pointer; overflow-wrap: break-word; hyphens: auto; min-height: 20px; }

@@ -407,15 +407,19 @@ console.log('gear tests passed');
   const edit = (who, a, id) => A(Object.assign({ action: 'saveActivity', id: id || 1, activity: act(a) }, who));
   assert.strictEqual(edit({ user: 'Levi', pin: '5555' }, {}).error, 'not_owner');
   assert.strictEqual(edit({ user: 'משפחת כהן', pin: '1234' }, { capacity: 4 }).error, 'below_joined');
-  r = edit({ user: 'משפחת כהן', pin: '1234' }, { capacity: 6, topic: 'עפיפונים ענקיים' });
+  // the host (מנחה) is optional, one line, up to 60 characters
+  assert.strictEqual(r.activities.find(a => a.id === 1).host, '');
+  assert.strictEqual(edit({ user: 'משפחת כהן', pin: '1234' }, { host: 'א'.repeat(61) }).error, 'too_long');
+  r = edit({ user: 'משפחת כהן', pin: '1234' }, { capacity: 6, topic: 'עפיפונים ענקיים', host: '  דנה\nמהאוהל הכחול ' });
   assert.ok(r.ok); one = r.activities.find(a => a.id === 1);
+  assert.strictEqual(one.host, 'דנה מהאוהל הכחול');
   assert.strictEqual(one.topic, 'עפיפונים ענקיים'); assert.strictEqual(one.capacity, 6); assert.strictEqual(one.taken, 5);
   assert.strictEqual(as.actsRows.length, 2);
 
   // the organizers' tab
   const org = P(ctx.organizerActivities_(ctx.activitiesPublic_(as)));
-  assert.deepStrictEqual(org[0].slice(0, 6), ['ג׳ 06/10 21:00 עד ד׳ 07/10 01:00', '=cmd()', 'Levi', 'מבוגרים', 0, 'ללא הגבלה']);
-  assert.deepStrictEqual(org[1], ['ד׳ 07/10 10:00 עד 12:00', 'עפיפונים ענקיים', 'משפחת כהן', 'ילדים (6–12)', 5, 6, 'Levi 3 · משפחת כהן 2']);
+  assert.deepStrictEqual(org[0].slice(0, 6), ['ג׳ 06/10 21:00 עד ד׳ 07/10 01:00', '=cmd()', 'Levi', '', 'מבוגרים', 0]);
+  assert.deepStrictEqual(org[1], ['ד׳ 07/10 10:00 עד 12:00', 'עפיפונים ענקיים', 'משפחת כהן', 'דנה מהאוהל הכחול', 'ילדים (6–12)', 5, 6, 'Levi 3 · משפחת כהן 2']);
 
   // cancel: owner only, repeatable, gone from the public list; no more joins or edits
   assert.strictEqual(A({ action: 'deleteActivity', user: 'Levi', pin: '5555', id: 1 }).error, 'not_owner');

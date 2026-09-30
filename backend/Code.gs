@@ -185,7 +185,7 @@ function summary_(store) {
 // cancelled family keeps its row (status "\u05d1\u05d5\u05d8\u05dc") so a recorded payment is never lost.
 var ORG_PROP = 'ORG_SHEET_ID';
 var ORG_TABS = { families: '\u05de\u05e9\u05e4\u05d7\u05d5\u05ea', nights: '\u05dc\u05d9\u05dc\u05d5\u05ea', summary: '\u05e1\u05d9\u05db\u05d5\u05dd', acts: '\u05e4\u05e2\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea' };
-var ORG_ACT_HEAD = ['\u05de\u05ea\u05d9', '\u05e0\u05d5\u05e9\u05d0', '\u05de\u05e9\u05e4\u05d7\u05d4 \u05de\u05d0\u05e8\u05d2\u05e0\u05ea', '\u05e7\u05d4\u05dc', '\u05de\u05e9\u05ea\u05ea\u05e4\u05d9\u05dd', '\u05de\u05e7\u05d5\u05de\u05d5\u05ea', '\u05de\u05d9 \u05d4\u05e6\u05d8\u05e8\u05e3'];
+var ORG_ACT_HEAD = ['\u05de\u05ea\u05d9', '\u05e0\u05d5\u05e9\u05d0', '\u05de\u05e9\u05e4\u05d7\u05d4 \u05de\u05d0\u05e8\u05d2\u05e0\u05ea', '\u05de\u05e0\u05d7\u05d4', '\u05e7\u05d4\u05dc', '\u05de\u05e9\u05ea\u05ea\u05e4\u05d9\u05dd', '\u05de\u05e7\u05d5\u05de\u05d5\u05ea', '\u05de\u05d9 \u05d4\u05e6\u05d8\u05e8\u05e3'];
 var ORG_HEAD = ['\u05e9\u05dd \u05d4\u05de\u05e9\u05e4\u05d7\u05d4', '\u05e1\u05d8\u05d8\u05d5\u05e1', '\u05e2\u05d5\u05d3\u05db\u05df', '\u05ea\u05e7\u05d5\u05e4\u05d5\u05ea', '\u05dc\u05e0\u05d9\u05dd \u05dc\u05e4\u05d9 \u05dc\u05d9\u05dc\u05d4', '\u05de\u05d1\u05d5\u05d2\u05e8\u05d9\u05dd (14+)', '\u05d9\u05dc\u05d3\u05d9\u05dd (5 \u05e2\u05d3 13)',
                 '\u05e4\u05e2\u05d5\u05d8\u05d5\u05ea (\u05e2\u05d3 5)', '\u05d4\u05e0\u05d7\u05d5\u05ea', '\u05de\u05d7\u05d9\u05e8 \u05de\u05dc\u05d0', '\u05de\u05d7\u05d9\u05e8 \u05e7\u05d1\u05d5\u05e6\u05ea\u05d9'];
 var ORG_MANUAL = ['\u05e9\u05d5\u05dc\u05dd (\u20aa)', '\u05d4\u05e2\u05e8\u05d5\u05ea \u05de\u05d0\u05e8\u05d2\u05e0\u05d9\u05dd'];
@@ -835,15 +835,15 @@ function enableAlerts() {
 // join sets the family's count rather than adding to it.
 var ACT_TABS = { acts: '\u05e4\u05e2\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea', joins: '\u05d4\u05e6\u05d8\u05e8\u05e4\u05d5\u05d9\u05d5\u05ea' };
 var ACT_HEAD = ['\u05de\u05e1\u05e4\u05e8', '\u05e1\u05d8\u05d8\u05d5\u05e1', '\u05de\u05e9\u05e4\u05d7\u05d4 \u05de\u05d0\u05e8\u05d2\u05e0\u05ea', '\u05e0\u05d5\u05e9\u05d0', '\u05ea\u05d9\u05d0\u05d5\u05e8', '\u05d4\u05ea\u05d7\u05dc\u05d4', '\u05e1\u05d9\u05d5\u05dd', '\u05e7\u05d4\u05dc', '\u05de\u05d2\u05d9\u05dc', '\u05e2\u05d3 \u05d2\u05d9\u05dc',
-                '\u05de\u05e7\u05d5\u05de\u05d5\u05ea', '\u05d7\u05d5\u05d1\u05d4 \u05dc\u05d4\u05d1\u05d9\u05d0', '\u05de\u05d5\u05de\u05dc\u05e5 \u05dc\u05d4\u05d1\u05d9\u05d0', '\u05e0\u05d5\u05e6\u05e8', '\u05e2\u05d5\u05d3\u05db\u05df', '\u05de\u05d6\u05d4\u05d4 \u05e9\u05dc\u05d9\u05d7\u05d4'];
+                '\u05de\u05e7\u05d5\u05de\u05d5\u05ea', '\u05d7\u05d5\u05d1\u05d4 \u05dc\u05d4\u05d1\u05d9\u05d0', '\u05de\u05d5\u05de\u05dc\u05e5 \u05dc\u05d4\u05d1\u05d9\u05d0', '\u05e0\u05d5\u05e6\u05e8', '\u05e2\u05d5\u05d3\u05db\u05df', '\u05de\u05d6\u05d4\u05d4 \u05e9\u05dc\u05d9\u05d7\u05d4', '\u05de\u05e0\u05d7\u05d4'];
 var ACT_COL = { id: 0, status: 1, owner: 2, topic: 3, description: 4, start: 5, end: 6, tag: 7, ageFrom: 8, ageTo: 9,
-                capacity: 10, required: 11, suggested: 12, created: 13, updated: 14, clientId: 15 };
+                capacity: 10, required: 11, suggested: 12, created: 13, updated: 14, clientId: 15, host: 16 };
 var JOIN_HEAD = ['\u05e4\u05e2\u05d9\u05dc\u05d5\u05ea', '\u05de\u05e9\u05e4\u05d7\u05d4', '\u05de\u05e9\u05ea\u05ea\u05e4\u05d9\u05dd', '\u05e2\u05d5\u05d3\u05db\u05df'];
 var JOIN_COL = { actId: 0, family: 1, count: 2, updated: 3 };
 var AST = { active: '\u05e4\u05e2\u05d9\u05dc', hidden: '\u05d4\u05d5\u05e1\u05ea\u05e8', cancelled: '\u05d1\u05d5\u05d8\u05dc' };
 var ACT_STATUSES = [AST.active, AST.hidden, AST.cancelled];
 var ACT_TAGS = ['\u05dc\u05db\u05d5\u05dc\u05dd', '\u05de\u05d1\u05d5\u05d2\u05e8\u05d9\u05dd', '\u05d9\u05dc\u05d3\u05d9\u05dd'];
-var ACT_LIMITS = { topic: 60, description: 600, gear: 200, capacity: 500, join: 30 };
+var ACT_LIMITS = { topic: 60, host: 60, description: 600, gear: 200, capacity: 500, join: 30 };
 var TRIP = { from: '2026-10-06', to: '2026-10-13' };   // the days an activity may fall on
 var MAX_ACTS_PER_FAMILY = 30;
 var ACTS_CACHE = 'acts-v1';
@@ -884,7 +884,7 @@ function findAct_(as, id) {
 function activitiesPublic_(as) {
   var list = as.acts().filter(function (a) { return a.status === AST.active; }).map(function (a) {
     var joined = actJoins_(as, +a.id).map(function (j) { return { family: unguard_(j.family), count: Math.floor(+j.count) }; });
-    return { id: +a.id, owner: unguard_(a.owner), topic: unguard_(a.topic), description: unguard_(a.description),
+    return { id: +a.id, owner: unguard_(a.owner), topic: unguard_(a.topic), host: unguard_(a.host), description: unguard_(a.description),
              start: String(a.start), end: String(a.end), tag: String(a.tag),
              ageFrom: a.ageFrom === '' ? null : +a.ageFrom, ageTo: a.ageTo === '' ? null : +a.ageTo,
              capacity: +a.capacity || 0, required: unguard_(a.required), suggested: unguard_(a.suggested),
@@ -904,6 +904,7 @@ function saveActivity_(req, store, as) {
   var fam = actFamily_(req, store), a = req.activity || {};
   var f = {
     topic: tipText_(String(a.topic || '').replace(/\n/g, ' '), 3, ACT_LIMITS.topic),
+    host: a.host ? tipText_(String(a.host).replace(/\n/g, ' '), 0, ACT_LIMITS.host) : '',     // optional: who leads it
     description: a.description ? tipText_(a.description, 0, ACT_LIMITS.description) : '',
     start: actTime_(a.start), end: actTime_(a.end),
     tag: String(a.tag || ''), ageFrom: '', ageTo: '', capacity: '',
@@ -997,7 +998,7 @@ function addDemoActivities_(as) {
   DEMO_ACTS.forEach(function (d) {
     if (as.acts().some(function (x) { return x.clientId === d.clientId; })) return;
     var row = { id: nextId_(as.acts()), status: AST.active, owner: DEMO_OWNER, created: as.now(), updated: '', clientId: d.clientId,
-                topic: d.topic, description: d.description + DEMO_NOTE, start: d.start, end: d.end, tag: d.tag,
+                topic: d.topic, host: d.host || '', description: d.description + DEMO_NOTE, start: d.start, end: d.end, tag: d.tag,
                 ageFrom: d.ageFrom == null ? '' : d.ageFrom, ageTo: d.ageTo == null ? '' : d.ageTo, capacity: d.capacity,
                 required: safeCell_(d.required), suggested: safeCell_(d.suggested) };
     as.addAct(row); n++;
@@ -1015,7 +1016,7 @@ function organizerActivities_(pub) {
   return pub.activities.map(function (a) {
     var who = a.tag + (a.ageFrom != null || a.ageTo != null
       ? ' (' + (a.ageFrom != null ? a.ageFrom : '') + '\u2013' + (a.ageTo != null ? a.ageTo : '') + ')' : '');
-    return [actWhen_(a), a.topic, a.owner, who, a.taken, a.capacity || '\u05dc\u05dc\u05d0 \u05d4\u05d2\u05d1\u05dc\u05d4',
+    return [actWhen_(a), a.topic, a.owner, a.host, who, a.taken, a.capacity || '\u05dc\u05dc\u05d0 \u05d4\u05d2\u05d1\u05dc\u05d4',
             a.joined.map(function (j) { return j.family + ' ' + j.count; }).join(' \u00b7 ')];
   });
 }
