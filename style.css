@@ -343,6 +343,9 @@ a.btn-secondary { display: inline-block; text-decoration: none; border-style: so
 .adlg { width: min(560px, calc(100vw - 16px)); max-height: calc(100vh - 24px); border: 1px solid var(--line);
   border-radius: 12px; background: var(--card); color: var(--text); padding: 16px; }
 .adlg::backdrop { background: rgba(0, 0, 0, .45); }
+.adlg-sm { width: min(360px, calc(100vw - 32px)); text-align: center; }
+.adlg-sm h2 { margin-inline-end: 0; }
+.adlg-sm .actions { justify-content: center; }
 .adlg h2 { margin-inline-end: 40px; overflow-wrap: anywhere; }
 .adlg-x { position: absolute; top: 8px; inset-inline-end: 8px; width: 40px; height: 40px; font: inherit; font-size: 1.1rem;
   border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; }

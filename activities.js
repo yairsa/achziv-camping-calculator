@@ -264,6 +264,16 @@
     var d = $('act-dlg');
     if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute('open', ''); }
   }
+  // After a join or a leave: the details close, and a small window names the activity and what was done.
+  function done(title, a, extra) {
+    closeDlg();
+    $('act-done-title').textContent = title;
+    $('act-done-text').innerHTML = '<strong>' + esc(a.topic) + '</strong><br>' + esc(when(a)) + (extra ? '<br>' + esc(extra) : '');
+    var d = $('act-done');
+    if (d.showModal) d.showModal(); else d.setAttribute('open', '');
+    $('act-done-ok').focus();
+  }
+  function closeDone() { var d = $('act-done'); if (d.open) { if (d.close) d.close(); else d.removeAttribute('open'); } }
   function closeDlg() { var d = $('act-dlg'); dlg = null; if (d.open) { if (d.close) d.close(); else d.removeAttribute('open'); } }
 
   // The name + code block: asked only until the server has accepted them once in this visit.
@@ -453,6 +463,8 @@
     if (phone.addEventListener) phone.addEventListener('change', function () { if (view === 'cal') render(); });
     $('acts-add').addEventListener('click', function () { form(null); });
     $('act-dlg-close').addEventListener('click', closeDlg);
+    $('act-done-ok').addEventListener('click', closeDone);
+    $('act-done').addEventListener('click', function (e) { if (e.target === $('act-done')) closeDone(); });   // the backdrop
     $('act-dlg').addEventListener('close', function () { dlg = null; });
     $('act-dlg').addEventListener('click', function (e) { if (e.target === $('act-dlg')) closeDlg(); });   // the backdrop
 
@@ -480,11 +492,12 @@
       if (t.id === 'act-join') {
         var n = +$('act-count').value;
         if (!(n >= 1 && n <= 30 && n % 1 === 0)) { say($('act-msg'), ERR.bad_count, 'bad'); $('act-count').focus(); return; }
+        var again = !!myJoin(a);
         write({ action: 'join', id: a.id, count: n }, function () {
-          details(a.id); say($('act-msg'), 'הצטרפתם! ' + n + (n === 1 ? ' משתתף.' : ' משתתפים.'), 'good');
+          done(again ? 'מספר המשתתפים עודכן' : 'הצטרפתם!', a, n === 1 ? 'משתתף אחד' : n + ' משתתפים');
         });
       } else if (t.id === 'act-leave') {
-        write({ action: 'leave', id: a.id }, function () { details(a.id); say($('act-msg'), 'יצאתם מהפעילות.', 'good'); });
+        write({ action: 'leave', id: a.id }, function () { done('יצאתם מהפעילות', a, ''); });
       } else if (t.id === 'act-edit') {
         form(a.id);
       } else if (t.id === 'act-cancel') {

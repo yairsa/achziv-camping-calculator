@@ -47,6 +47,20 @@ let oldBackend = false, dropNext = 0, delay = 0, calls = [];
   const msg = () => text('#act-msg');
   const bg = (sel) => page.locator(sel).first().evaluate(e => getComputedStyle(e).backgroundColor);
   const waitMsg = (re) => page.waitForFunction((s) => new RegExp(s).test(document.getElementById('act-msg').textContent), re.source, { timeout: 15000 });
+  // after a join or a leave: the details close and a small window names the activity; אישור closes it, and the
+  // test opens the activity again to go on
+  const doneOk = async (title, extra) => {
+    await page.waitForSelector('#act-done[open]', { timeout: 15000 });
+    assert.ok(!(await page.evaluate(() => document.getElementById('act-dlg').open)), 'the details stayed open');
+    assert.strictEqual(await text('#act-done-title'), title);
+    const t = await text('#act-done-text');
+    assert.ok(/עפיפונים/.test(t) && (!extra || t.includes(extra)), t);
+    assert.ok(await page.evaluate(() => document.activeElement.id === 'act-done-ok'), 'focus not on אישור');
+    await noHScroll('done');
+    await page.click('#act-done-ok');
+    assert.ok(await page.isHidden('#act-done'));
+    await page.click('.arow[data-id="1"]');
+  };
   const setTime = async (key, d, h, m) => { await page.selectOption('#af-' + key + '-day', d); await page.selectOption('#af-' + key + '-h', h); await page.selectOption('#af-' + key + '-m', m); };
 
   // ---- prefetched in the background; the tab bar still fits at 360px ----
@@ -103,11 +117,11 @@ let oldBackend = false, dropNext = 0, delay = 0, calls = [];
   // ---- join: 3, then change to 5 (sets, not adds): the places are taken, joining stays open ----
   await page.fill('#act-count', '3');
   await page.click('#act-join');
-  await waitMsg(/הצטרפתם/);
+  await doneOk('הצטרפתם!', '3 משתתפים');
   assert.ok((await text('#act-places')).includes('נשארו 2 מקומות'));
   await page.fill('#act-count', '5');
   await page.click('#act-join');
-  await waitMsg(/הצטרפתם/);
+  await doneOk('מספר המשתתפים עודכן', '5 משתתפים');
   assert.strictEqual(joins.filter(j => j.count > 0).length, 1);
   assert.ok((await text('#act-places')).startsWith('5 מתוך 5 מקומות, אפשר עדיין להצטרף'), await text('#act-places'));
   await page.click('#act-dlg-close');
@@ -125,10 +139,10 @@ let oldBackend = false, dropNext = 0, delay = 0, calls = [];
   await page.fill('#act-pin', '5555');
   await page.fill('#act-count', '2');
   await page.click('#act-join');
-  await waitMsg(/הצטרפתם/);
+  await doneOk('הצטרפתם!', '2 משתתפים');
   assert.ok((await text('#act-places')).startsWith('7 מתוך 5 מקומות, אפשר עדיין להצטרף'), await text('#act-places'));
   await page.click('#act-leave');
-  await waitMsg(/יצאתם/);
+  await doneOk('יצאתם מהפעילות');
   await page.click('#act-switch');
 
   // ---- the owner leaves: a place opens and Levi joins ----
@@ -141,7 +155,7 @@ let oldBackend = false, dropNext = 0, delay = 0, calls = [];
   await page.click('.arow[data-id="1"]');
   await page.fill('#act-pin', '1234');
   await page.click('#act-leave');
-  await waitMsg(/יצאתם/);
+  await doneOk('יצאתם מהפעילות');
   assert.ok((await text('#act-places')).includes('נשארו 5 מקומות'));
   assert.strictEqual(await page.locator('#act-leave').count(), 0);
   // Levi, in the same visit: "החלפה" asks for the name + code again
@@ -149,7 +163,7 @@ let oldBackend = false, dropNext = 0, delay = 0, calls = [];
   await page.fill('#act-user', 'Levi'); await page.fill('#act-pin', '5555');
   await page.fill('#act-count', '4');
   await page.click('#act-join');
-  await waitMsg(/הצטרפתם/);
+  await doneOk('הצטרפתם!', '4 משתתפים');
   assert.ok((await text('#act-dlg-body')).includes('Levi (4)'));
 
   // ---- edit (owner only): fewer places than who joined is fine (advisory), then a real edit ----
@@ -157,7 +171,7 @@ let oldBackend = false, dropNext = 0, delay = 0, calls = [];
   await page.fill('#act-user', 'משפחת כהן'); await page.fill('#act-pin', '1234');
   await page.fill('#act-count', '1');
   await page.click('#act-join');
-  await waitMsg(/הצטרפתם/);
+  await doneOk('הצטרפתם!', 'משתתף אחד');
   await page.click('#act-edit');
   assert.strictEqual(await page.inputValue('#af-topic'), 'סדנת עפיפונים');
   assert.strictEqual(await page.inputValue('#af-end-h'), '12');

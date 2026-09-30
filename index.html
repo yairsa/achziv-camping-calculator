@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=7fb2948b">
+  <link rel="stylesheet" href="style.css?v=d3c4871d">
 </head>
 <body>
   <a class="skip" href="#main">דלג לתוכן</a>
@@ -366,6 +366,12 @@
         <button type="button" id="act-dlg-close" class="adlg-x" aria-label="סגירה">✕</button>
         <div id="act-dlg-body"></div>
       </dialog>
+      <!-- after joining or leaving: a short confirmation, not the whole activity again (activities-plan §6.4) -->
+      <dialog id="act-done" class="adlg adlg-sm" aria-labelledby="act-done-title" aria-describedby="act-done-text">
+        <h2 id="act-done-title"></h2>
+        <p id="act-done-text"></p>
+        <div class="actions"><button type="button" id="act-done-ok" class="btn-primary">אישור</button></div>
+      </dialog>
     </section>
   </main>
 
@@ -389,7 +395,7 @@
   <script src="gear-seed.js?v=c6a3d750"></script>
   <script src="gear.js?v=e1b0dcc9"></script>
   <script src="acts-demo.js?v=b2f8d20b"></script>
-  <script src="activities.js?v=93d994c7"></script>
+  <script src="activities.js?v=a97023ba"></script>
   <script src="share.js?v=1d3c3429"></script>
   <script src="tour-texts.js?v=76ea71f0"></script>
   <script src="tour.js?v=c7749044"></script>
