@@ -2,7 +2,7 @@
 
 > **Open questions for Yair:** none. The decisions in §2 are derived; say if one is wrong.
 
-**Status:** §4.1 done 01/10/2026 (backend only, not deployed). Next: the first unticked box in §4.2.
+**Status:** §4.1 and §4.2 done 01/10/2026 (pushed, backend not deployed). Next: the first unticked box in §4.3.
 
 ## 1. The brief (Yair, 01/10/2026)
 
@@ -46,9 +46,12 @@
 - [x] Action `adminDecide {kind, id, fields, status, mergedInto?}`: validates fields with the same limits as submissions, writes fields + status in one update, stamps אושר, appends to יומן ניהול, clears the public cache; repeatable
   - done: `kind` is `tip` / `comment` / `gear`; `status` is a key (`approved` · `rejected` · `merged` for tips only), never the Hebrew value. Only the fields sent change. A retry changes nothing and logs nothing. The log gets one row per changed field (`adm.log`, tab יומן ניהול, created on first write). A merge runs `housekeep_`, so the merge comment is made once. `doPost` clears all four public caches after any successful admin write (everything except login, me, queue). Gear limits: tags 100, note 200. The queue also returns `categories`, `sections` and `mergeTargets` (approved tips), so the page needs no second call
   - gotcha: `instanceof Date` is false for a Date made outside the vm, so the tests could not see dates. `isDate_` checks for `getTime` instead
-- [ ] `admin.html` + `admin.js`: login screen, the waiting list (cards, counts), one item's review screen, logout; cached copy at once
-- [ ] Tests: backend (each kind, each decision, a merge, bad fields, no token) + `tests/admin.e2e.js` at 360px (backend in vm, mocked URL): login, review a tip with an edited category, approve → gone from the list and public, reject a comment, approve a gear item, a dropped reply retried
-- [ ] Gate: all gates green; stamp
+- [x] `admin.html` + `admin.js`: login screen, the waiting list (cards, counts), one item's review screen, logout; cached copy at once
+  - done: `admin.html` + `admin.js` + `admin.css` (own `api()` copy with the 4-try retry; loads only `prices.js` for the URL, not `app.js`). Token and the last list in localStorage (`achziv-admin-token`, `achziv-admin-queue`); logout and an `auth` error clear both. A list of all kinds, newest first, with filter chips per kind. The item opens with a history step, so the phone's back button closes it. Merge preselects the "דומה ל…" tip. `bad_request` on any admin call shows "server not updated yet". Times read "30/09 בשעה 14:05": without the word, RTL shows the time before the date
+  - `tools/stamp.py` now stamps `admin.html` too
+- [x] Tests: backend (each kind, each decision, a merge, bad fields, no token) + `tests/admin.e2e.js` at 360px (backend in vm, mocked URL): login, review a tip with an edited category, approve → gone from the list and public, reject a comment, approve a gear item, a dropped reply retried
+  - done, plus: the old script, a wrong password, the back button, a server error keeps the edits, the cached list at once on a slow reload, a password change sends back to login, logout leaves nothing. 4 mutations to `admin.js` (no retry, logout keeps the list, no cached list, no merge preselect) all turned it red
+- [x] Gate: all gates green; stamp
 
 #### 4.3 Edit anything current
 - [ ] Actions `adminList {kind}` / `adminUpdate {kind, id, fields, status}` for tips, comments, gear, activities, tour texts; same validation, log and cache rules
@@ -69,6 +72,7 @@
 
 ## 5. Log
 - 01/10/2026 — planned (this file). The 30/09 payments plan superseded.
+- 01/10/2026 — §4.1 (login) and §4.2 (waiting list + review page) built and pushed. Backend not deployed yet (§4.5).
 
 ## 6. ~~The 30/09/2026 plan~~ — superseded 01/10/2026 (payments are out; see §1)
 

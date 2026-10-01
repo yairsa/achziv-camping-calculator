@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>ניהול - פארק אכזיב</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=d3c4871d">
+  <link rel="stylesheet" href="admin.css?v=1f4a4597">
+</head>
+<body class="adm">
+  <header class="top adm-top">
+    <h1>ניהול</h1>
+    <div id="adm-who" class="adm-who" hidden>
+      <span id="adm-name"></span>
+      <button type="button" id="adm-logout" class="btn-link">יציאה</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <p id="adm-server" class="msg bad" hidden>השרת עוד לא עודכן לגרסה עם דף הניהול. אחרי פריסה של גרסה חדשה בגוגל, הדף יעבוד.</p>
+
+    <!-- ===== login ===== -->
+    <section id="adm-login" class="card" hidden>
+      <h2>כניסה למארגנים</h2>
+      <form id="login-form" novalidate>
+        <div class="fields">
+          <label>שם<input id="login-name" autocomplete="username" required maxlength="40"></label>
+          <label>סיסמה<input id="login-pw" type="password" autocomplete="current-password" required maxlength="200"></label>
+        </div>
+        <div class="actions"><button type="submit" class="btn-primary" id="login-go">כניסה</button></div>
+        <p id="login-msg" class="msg" role="status"></p>
+      </form>
+      <p class="hint">הסיסמה נקבעת בגיליון ההרשמה: מארגנים ← סיסמת ניהול. הכניסה נשמרת בטלפון הזה 7 ימים.</p>
+    </section>
+
+    <!-- ===== the waiting list ===== -->
+    <section id="adm-queue" hidden>
+      <div class="adm-head">
+        <h2>ממתינים לאישור</h2>
+        <button type="button" id="queue-refresh" class="btn-link">רענון</button>
+      </div>
+      <div id="queue-filter" class="adm-chips" role="group" aria-label="סינון לפי סוג"></div>
+      <p id="queue-msg" class="msg" role="status"></p>
+      <ul id="queue-list" class="adm-list"></ul>
+      <p id="queue-state" class="hint"></p>
+    </section>
+
+    <!-- ===== one item ===== -->
+    <section id="adm-item" hidden>
+      <div class="subbar"><button type="button" id="item-back" class="btn-secondary">✕ חזרה לרשימה</button></div>
+      <div class="card">
+        <p id="item-meta" class="hint"></p>
+        <form id="item-form" novalidate>
+          <div id="item-fields"></div>
+          <div class="adm-decide">
+            <button type="button" class="btn-primary" data-decide="approved">אישור</button>
+            <button type="button" class="btn-secondary adm-reject" data-decide="rejected">דחייה</button>
+          </div>
+          <div id="item-merge" class="adm-merge" hidden>
+            <label>מיזוג לטיפ קיים (הטיפ יופיע כתגובה עליו)
+              <select id="merge-target"></select>
+            </label>
+            <button type="button" class="btn-secondary" data-decide="merged">מיזוג</button>
+          </div>
+          <p id="item-msg" class="msg" role="status"></p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <script src="prices.js?v=9ef8ec21"></script>
+  <script src="admin.js?v=8e628a7c"></script>
+</body>
+</html>

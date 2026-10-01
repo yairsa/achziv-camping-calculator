@@ -1,0 +1,43 @@
+/* The managing page (admin.html). Colours come from style.css's tokens, so dark mode follows. */
+.adm-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.adm-top h1 { margin-bottom: 8px; }
+.adm-who { color: var(--muted); white-space: nowrap; }
+.adm-who[hidden], .adm [hidden] { display: none; }
+.adm-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+
+.adm-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+.adm-chips button {
+  font: inherit; font-size: .95rem; padding: 6px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--card); color: var(--text);
+}
+.adm-chips button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+.adm-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.adm-card {
+  display: grid; gap: 2px; width: 100%; text-align: start; font: inherit; color: var(--text); cursor: pointer;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+}
+.adm-card:hover { border-color: var(--accent); }
+.adm-kind { justify-self: start; font-size: .8rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; }
+.adm-tip { background: var(--t-all-bg); color: var(--t-all-ink); }
+.adm-comment { background: var(--t-adult-bg); color: var(--t-adult-ink); }
+.adm-gear { background: var(--t-kid-bg); color: var(--t-kid-ink); }
+.adm-title { font-weight: 600; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.adm-sub { font-size: .88rem; color: var(--muted); overflow-wrap: anywhere; }
+
+.adm-field { display: block; font-size: .9rem; color: var(--muted); margin-bottom: 12px; }
+.adm-field input, .adm-field textarea, .adm-field select {
+  display: block; width: 100%; font: inherit; font-size: 1rem; color: var(--text); background: var(--card);
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-top: 4px;
+}
+.adm-field textarea { resize: vertical; line-height: 1.5; }
+.adm-on { margin: 0 0 12px; }
+.adm-decide { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+.adm-decide button { width: 100%; padding: 12px; }
+.adm-reject { border-style: solid; color: var(--danger); border-color: var(--danger); background: var(--card); }
+.adm-merge { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.adm-merge label { display: block; font-size: .9rem; color: var(--muted); }
+.adm-merge select { display: block; width: 100%; margin: 4px 0 8px; font-size: 1rem; }
+.adm-merge .btn-secondary { border-style: solid; }
+#adm-item .subbar { top: 0; }
