@@ -18,6 +18,12 @@
   background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
 }
 .adm-card:hover { border-color: var(--accent); }
+.adm-row { display: flex; gap: 6px; align-items: stretch; }
+.adm-row .adm-card { flex: 1; min-width: 0; }
+.adm-del { flex: none; width: 44px; font: inherit; font-size: 1.1rem; cursor: pointer; border-radius: 12px;
+  background: var(--card); border: 1px solid var(--line); color: var(--text); }
+.adm-del:hover { border-color: #c0392b; }
+.adm-add { width: 100%; margin-bottom: 12px; }
 .adm-kind { justify-self: start; font-size: .8rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; }
 .adm-tip { background: var(--t-all-bg); color: var(--t-all-ink); }
 .adm-comment { background: var(--t-adult-bg); color: var(--t-adult-ink); }

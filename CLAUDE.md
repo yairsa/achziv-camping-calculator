@@ -11,7 +11,7 @@ Static RTL site on GitHub Pages (`main` = live, about 1 minute after a push; no 
 ## Backend — the gotchas that cost hours on 30/09/2026
 - **Edit `backend/Code.source.gs`, then run `python backend/build.py`.** `Code.gs` is generated, pure ASCII with Hebrew as `\u` escapes. Pasting Hebrew into Yair's Apps Script editor either broke the syntax or stored it reversed. Don't try Hebrew in `Code.gs` again.
 - **Never give Yair Hebrew to copy from the terminal.** It displays reversed and copies reversed. Hand him `Code.gs` via the clipboard: `Get-Content -Raw backend\Code.gs | Set-Clipboard`.
-- **Backend changes go live only after Yair pastes the code and deploys a new version** (Deploy → Manage deployments → New version; the URL stays the same). That step is always his. Hand it to him with the file on his clipboard.
+- **Backend changes go live only after Yair pastes the code and deploys a new version** (Deploy → Manage deployments → New version; the URL stays the same). That step is always his. **Whenever `Code.gs` changes, put it on his clipboard yourself, unasked** (Yair, 01/10/2026: "always put Code.gs on my clipboard"), and say so in one line.
 - **New Google permissions are requested on the first run from the sheet menu, not at deploy time.** A missing permission fails silently in `syncOrganizers_` (by design, so registrations keep working).
 - **About 1 in 3 web-app replies are dropped by Google** (a 404 page after the script already ran). Every action must be safe to repeat. The site retries up to 4 times, and a delete that finds `not_found` on a retry counts as success.
 - The registration sheet holds codes (hashed) and raw data: **never share it**. Organizers get the separate synced sheet (see `backend/SETUP.md`).

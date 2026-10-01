@@ -32,7 +32,7 @@ const ts = {
 const acts = [{ id: 1, status: 'פעיל', owner: 'משפחת לוי', topic: 'ציור בחול', host: '', description: 'ציור ופיסול בחול הרטוב',
   start: '2026-10-07T10:00', end: '2026-10-07T11:00', tag: 'ילדים', ageFrom: 4, ageTo: 9, capacity: 10, required: '', suggested: '',
   created: '', updated: '', clientId: 'a1' }];
-const as = { acts: () => acts, joins: () => [], addAct() {}, updateAct() {}, addJoin() {}, updateJoin() {}, now: () => new Date() };
+const as = { acts: () => acts, joins: () => [], addAct: (r) => acts.push(r), updateAct() {}, addJoin() {}, updateJoin() {}, now: () => new Date() };
 const tip = (id, status, category, title, text, extra) => tips.push(Object.assign({ id, status, category, title, text, author: '',
   submitted: at(29, id), approved: status === ST.approved ? 'x' : '', mergedInto: '', similar: '', clientId: 'c' + id }, extra));
 tip(1, ST.approved, 'אוהלים ולינה', 'יתדות ארוכות לחול', 'היתדות הרגילות לא מחזיקות בחול.');
@@ -55,7 +55,7 @@ for (let i = 0; i < 5; i++) ctx.route({ action: 'load', user: 'Levi', pin: '0000
 const codeHashes = regRows.map(r => r.pinHash);
 const sent = [];
 
-let oldBackend = false, dropNext = 0, delay = 0;
+let oldBackend = false, dropNext = 0, delay = 0, hangNext = 0;
 const calls = [];
 
 (async () => {
@@ -66,7 +66,8 @@ const calls = [];
   await page.route('https://fonts.googleapis.com/**', r => r.abort());
   await page.route('https://script.google.com/**', async (route) => {
     const body = JSON.parse(route.request().postData());
-    calls.push(body.action);
+    calls.push(body.action + (body.kind ? ':' + body.kind : ''));
+    if (hangNext > 0) { hangNext--; return; }          // never answered (and never run): the page gives up and retries
     if (delay) await new Promise(r => setTimeout(r, delay));
     const res = oldBackend ? { ok: false, error: 'bad_request' } : P(ctx.route(body, rs, ts, as, adm));
     sent.push(JSON.stringify(res));
@@ -138,7 +139,7 @@ const calls = [];
   const before = calls.length;
   await page.click('#adm-item [data-decide="rejected"]');
   await page.waitForFunction(() => /נדחתה/.test(document.getElementById('queue-msg').textContent));
-  assert.strictEqual(calls.slice(before).filter(a => a === 'adminDecide').length, 2, 'the dropped reply was not retried');
+  assert.strictEqual(calls.slice(before).filter(a => a.startsWith('adminDecide')).length, 2, 'the dropped reply was not retried');
   assert.strictEqual(comments[0].status, ST.rejected);
   assert.strictEqual(logged.filter(l => l[2] === 'comment').length, 1, 'the retry logged twice');
 
@@ -357,6 +358,101 @@ const calls = [];
   await page.waitForFunction(() => !document.getElementById('list-refresh').disabled);
   assert.deepStrictEqual(await rows(), ['משפחת כהן']);
   codeHashes.forEach(h => assert.ok(!sent.some(s => s.includes(h)), 'a code hash reached the page'));
+
+  // ---- §4.6 entering the page refreshes every tab in the background, one after another ----
+  await page.addInitScript(() => { window.ACHZIV_ADMIN_TIMEOUT = 1500; });
+  calls.length = 0;
+  await page.reload();
+  await page.waitForFunction(() => !document.getElementById('adm-queue').hidden);
+  await page.waitForFunction(() => true);
+  const bg = ['adminList:tip', 'adminList:comment', 'adminList:gear', 'adminList:activity', 'adminList:tour', 'adminFamilies'];
+  for (let i = 0; i < 50 && !bg.every(a => calls.includes(a)); i++) await page.waitForTimeout(100);
+  assert.deepStrictEqual(calls.filter(a => bg.includes(a)), bg, 'the background refresh did not visit every tab, in order');
+
+  // ---- add a gear item from the top of its list; a missing name keeps the form ----
+  await page.click('#adm-nav [data-view="gear"]');
+  assert.strictEqual(await text('#list-add'), '+ הוספת פריט ציוד');
+  assert.ok(await page.isHidden('#e-status').catch(() => true));
+  await page.click('#list-add');
+  assert.ok(await page.isVisible('#adm-edit'));
+  assert.ok(!(await page.$('#e-status')), 'a new row has no status choice');
+  await page.selectOption('#f-section', 'ים וחוף');
+  await page.click('#edit-save');
+  await page.waitForFunction(() => /קצר/.test(document.getElementById('edit-msg').textContent));
+  await page.fill('#f-name', 'שמשייה');
+  await page.fill('#f-tags', 'נוחות');
+  await noHScroll('gear add');
+  hangNext = 1;                                        // the first try hangs: given up after the timeout and retried
+  await page.click('#edit-save');
+  await page.waitForFunction(() => /נוסף/.test(document.getElementById('list-msg').textContent), null, { timeout: 15000 });
+  const added = gear.filter(g => g.name === 'שמשייה');
+  assert.strictEqual(added.length, 1);
+  assert.deepStrictEqual([added[0].status, added[0].section, added[0].tags], [ST.approved, 'ים וחוף', 'נוחות']);
+  assert.ok((await rows()).includes('שמשייה'));
+  assert.ok(P(ctx.gearPublic_(ts)).items.some(g => g.name === 'שמשייה'), 'not public');
+
+  // ---- add a tip; the reply is dropped once and the retry adds nothing more ----
+  await page.click('#edit-back').catch(() => {});
+  await page.click('#adm-nav [data-view="tip"]');
+  await page.click('#list-add');
+  await page.selectOption('#f-category', 'ילדים');
+  await page.fill('#f-title', 'בקבוק לכל ילד');
+  await page.fill('#f-text', 'עם שם, כדי שלא יתבלבלו');
+  dropNext = 1;
+  await page.click('#edit-save');
+  await page.waitForFunction(() => /נוסף/.test(document.getElementById('list-msg').textContent));
+  assert.strictEqual(tips.filter(t => t.title === 'בקבוק לכל ילד').length, 1);
+  assert.ok((await rows()).includes('בקבוק לכל ילד'));
+
+  // ---- add a comment on an approved tip, and an activity ----
+  await page.click('#adm-nav [data-view="comment"]');
+  await page.waitForFunction(() => !document.getElementById('list-refresh').disabled);
+  await page.click('#list-add');
+  const newTip = tips.find(t => t.title === 'בקבוק לכל ילד');
+  await page.selectOption('#f-tipId', String(newTip.id));
+  await page.fill('#f-text', 'וגם מדבקה');
+  await page.click('#edit-save');
+  await page.waitForFunction(() => /נוסף/.test(document.getElementById('list-msg').textContent));
+  assert.ok(comments.some(c => c.text === 'וגם מדבקה' && c.tipId === newTip.id && c.status === ST.approved));
+  await page.click('#adm-nav [data-view="activity"]');
+  await page.click('#list-add');
+  await page.fill('#f-topic', 'שירה סביב המדורה');
+  await page.selectOption('#f-start-day', '2026-10-08'); await page.selectOption('#f-start-h', '20');
+  await page.selectOption('#f-end-day', '2026-10-08'); await page.selectOption('#f-end-h', '21');
+  await noHScroll('activity add');
+  delay = 1000;                                        // a slow server: the new row is listed before the refresh comes back
+  await page.click('#edit-save');
+  await page.waitForFunction(() => /נוסף/.test(document.getElementById('list-msg').textContent));
+  assert.ok((await rows()).includes('שירה סביב המדורה'), 'the new row is not shown at once');
+  delay = 0;
+  const song = acts.find(a => a.topic === 'שירה סביב המדורה');
+  assert.deepStrictEqual([song.owner, song.status, song.start, song.end], ['המארגנים', 'פעיל', '2026-10-08T20:00', '2026-10-08T21:00']);
+  assert.ok((await rows()).includes('שירה סביב המדורה'));
+  await page.waitForFunction(() => !document.getElementById('list-refresh').disabled);
+  assert.ok((await rows()).includes('שירה סביב המדורה'), 'gone after the refresh');
+
+  // ---- delete asks first: a cancelled confirm changes nothing; an accepted one removes it everywhere ----
+  const delBtn = '#list-items .adm-del[aria-label="מחיקה: שירה סביב המדורה"]';
+  page.once('dialog', d => { assert.ok(d.message().includes('שירה סביב המדורה')); d.dismiss(); });
+  await page.click(delBtn);
+  assert.strictEqual(song.status, 'פעיל');
+  assert.ok((await rows()).includes('שירה סביב המדורה'));
+  page.once('dialog', d => d.accept());
+  await page.click(delBtn);
+  await page.waitForFunction(() => /נמחק/.test(document.getElementById('list-msg').textContent));
+  assert.deepStrictEqual([song.status, song.topic], ['הוסתר', '']);
+  assert.ok(!(await rows()).includes('שירה סביב המדורה'));
+  assert.ok(!P(ctx.activitiesPublic_(as)).activities.some(a => a.id === song.id));
+  await page.click('#adm-nav [data-view="gear"]');
+  page.once('dialog', d => d.accept());
+  dropNext = 1;                                        // the delete's reply is lost: the retry finds it gone, still done
+  await page.click('#list-items .adm-del[aria-label="מחיקה: שמשייה"]');
+  await page.waitForFunction(() => /נמחק/.test(document.getElementById('list-msg').textContent));
+  assert.ok(!(await rows()).includes('שמשייה'));
+  assert.ok(!P(ctx.gearPublic_(ts)).items.some(g => g.id === added[0].id));
+  await page.click('#adm-nav [data-view="tour"]');
+  assert.ok(await page.isHidden('#list-add'));
+  assert.strictEqual(await page.locator('#list-items .adm-del').count(), 0, 'tour bubbles cannot be deleted');
 
   // ---- logout leaves nothing behind ----
   await page.click('#adm-logout');

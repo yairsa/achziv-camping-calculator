@@ -102,6 +102,8 @@ function route(req, store, tstore, astore, adm) {
       case 'adminDecide': return adminDecide_(req, tstore, adm);
       case 'adminList': return adminList_(req, tstore, astore, adm);
       case 'adminUpdate': return adminUpdate_(req, tstore, astore, adm);
+      case 'adminAdd': return adminAdd_(req, tstore, astore, adm);
+      case 'adminDelete': return adminDelete_(req, tstore, astore, adm);
       case 'adminFamilies': return adminFamilies_(req, store, adm);
       case 'adminFamilyUpdate': return adminFamilyUpdate_(req, store, adm);
       case 'adminFamilyCancel': return adminFamilyCancel_(req, store, adm);
@@ -1058,9 +1060,10 @@ function tourId_(tour, key) { return tour + '/' + key; }
 function adminList_(req, ts, as, adm) {
   adminAuth_(req, adm);
   var kind = req.kind, items, newest = function (a, b) { return b.id - a.id; };
+  var live = function (r) { return !isDeleted_(kind, r); }, targets;
   if (!ADMIN_EDIT[kind]) fail_('bad_request');
   if (kind === 'tip') {
-    items = ts.tips().map(function (t) {
+    items = ts.tips().filter(live).map(function (t) {
       return { id: +t.id, status: keyOf_(ST, t.status), category: String(t.category), title: unguard_(t.title),
                text: unguard_(t.text), author: unguard_(t.author), mergedInto: tipNumber_(t.mergedInto) || null,
                submitted: whenText_(t.submitted), ms: when_(t.submitted) };
@@ -1068,18 +1071,20 @@ function adminList_(req, ts, as, adm) {
   } else if (kind === 'comment') {
     var titles = {};
     ts.tips().forEach(function (t) { titles[+t.id] = unguard_(t.title); });
-    items = ts.comments().map(function (c) {
+    targets = ts.tips().filter(function (t) { return t.status === ST.approved; })     // a comment is added to one of these
+      .map(function (t) { return { id: +t.id, title: unguard_(t.title) }; }).sort(newest);
+    items = ts.comments().filter(live).map(function (c) {
       var k = tipNumber_(c.tipId);
       return { id: +c.id, status: keyOf_(ST, c.status), tipId: k, tipTitle: titles[k] || '', text: unguard_(c.text),
                author: unguard_(c.author), submitted: whenText_(c.submitted), ms: when_(c.submitted) };
     }).sort(newest);
   } else if (kind === 'gear') {
-    items = gearRows_(ts).map(function (g) {
+    items = gearRows_(ts).filter(live).map(function (g) {
       return { id: +g.id, status: keyOf_(ST, g.status), section: String(g.section), name: unguard_(g.name),
                tags: String(g.tags || ''), note: unguard_(g.note), submitted: whenText_(g.submitted), ms: when_(g.submitted) };
     }).sort(newest);
   } else if (kind === 'activity') {
-    items = as.acts().map(function (a) {
+    items = as.acts().filter(live).map(function (a) {
       return { id: +a.id, status: keyOf_(AST, a.status), owner: unguard_(a.owner), topic: unguard_(a.topic),
                host: unguard_(a.host), description: unguard_(a.description), start: String(a.start), end: String(a.end),
                tag: String(a.tag), ageFrom: a.ageFrom === '' ? null : +a.ageFrom, ageTo: a.ageTo === '' ? null : +a.ageTo,
@@ -1100,8 +1105,10 @@ function adminList_(req, ts, as, adm) {
                title: unguard_(r.title), text: unguard_(r.text), defTitle: d.title, defText: d.text };
     });
   }
-  return { ok: true, kind: kind, items: items, statuses: ADMIN_EDIT[kind], categories: TIP_CATEGORIES,
-           sections: GEAR_SECTIONS_, tags: ACT_TAGS, trip: TRIP };
+  var out = { ok: true, kind: kind, items: items, statuses: ADMIN_EDIT[kind], categories: TIP_CATEGORIES,
+              sections: GEAR_SECTIONS_, tags: ACT_TAGS, trip: TRIP };
+  if (targets) out.tips = targets;
+  return out;
 }
 
 // An activity's fields, checked like the family's own form; the result is checked as a whole (end after start,
@@ -1150,14 +1157,14 @@ function adminUpdate_(req, ts, as, adm) {
     if (f.title != null) next.title = tipText_(String(f.title).replace(/\n/g, ' '), 0, TOUR_TITLE_MAX);
     if (f.text != null) next.text = tipText_(f.text, 0, TOUR_TEXT_MAX);
   } else if (kind === 'activity') {
-    row = findAct_(as, req.id);
+    row = adminFind_(ts, as, kind, req.id);
     if (!row) fail_('not_found');
     id = +row.id;
     next = adminActFields_(req.fields, row);
     if (status) next.status = AST[status];
   } else {
     id = tipNumber_(req.id);
-    row = adminRows_(ts, kind).filter(function (r) { return +r.id === id; })[0];
+    row = adminFind_(ts, as, kind, id);
     if (!row) fail_('not_found');
     next = adminFields_(kind, req.fields);
     if (status) {
@@ -1172,6 +1179,75 @@ function adminUpdate_(req, ts, as, adm) {
     save(r);
   });
   return { ok: true, id: id, saved: saved, status: kind === 'tour' ? '' : keyOf_(kind === 'activity' ? AST : ST, row.status) };
+}
+
+// ---------- managing page: add and delete (docs/admin-plan.md §4.6) ----------
+// A delete is a tombstone: status הוסתר and the main field emptied. The id stays taken (a gear id is what visitors'
+// ticks point at, so it must never be reused), the status stays inside the tab's dropdown, and the whole row is
+// logged so it can be typed back. A tombstone is gone from every admin list and, being hidden, from the site.
+var ADMIN_MAIN = { tip: 'title', comment: 'text', gear: 'name', activity: 'topic' };
+function isDeleted_(kind, r) {
+  return !!ADMIN_MAIN[kind] && (r.status === ST.hidden || r.status === AST.hidden) && String(r[ADMIN_MAIN[kind]]) === '';
+}
+function adminKindRows_(ts, as, kind) { return kind === 'activity' ? as.acts() : adminRows_(ts, kind); }
+function adminFind_(ts, as, kind, id) {
+  id = tipNumber_(id);
+  return adminKindRows_(ts, as, kind).filter(function (r) { return +r.id === id && !isDeleted_(kind, r); })[0] || null;
+}
+function rowText_(r) {
+  var o = {};
+  Object.keys(r).forEach(function (k) { if (k !== '_row') o[k] = isDate_(r[k]) ? r[k].toISOString() : r[k]; });
+  return JSON.stringify(o);
+}
+
+// A new row, straight to מאושר / פעיל, with every required field checked as an edit checks it. The page's clientId
+// makes a retry after a dropped reply return the same row instead of adding a second one.
+function adminAdd_(req, ts, as, adm) {
+  var who = adminAuth_(req, adm), kind = req.kind, clientId = checkClientId_(req.clientId);
+  if (!ADMIN_MAIN[kind]) fail_('bad_request');
+  var rows = adminKindRows_(ts, as, kind);
+  var dup = rows.filter(function (r) { return String(r.clientId) === clientId; })[0];
+  if (dup) return { ok: true, id: +dup.id, added: false };
+  var f = req.fields || {}, now = kind === 'activity' ? as.now() : ts.now(), row, add;
+  function all(keys) { var o = {}; keys.forEach(function (k) { o[k] = f[k] == null ? '' : f[k]; }); return o; }
+  if (kind === 'activity') {
+    var blank = { topic: '', host: '', description: '', start: '', end: '', tag: '', ageFrom: '', ageTo: '', capacity: '',
+                  required: '', suggested: '' };
+    row = { id: nextId_(rows), status: AST.active, owner: 'המארגנים', created: now, updated: '', clientId: clientId };
+    var vals = adminActFields_(all(Object.keys(blank)), blank);
+    Object.keys(blank).forEach(function (k) { row[k] = k in vals ? vals[k] : blank[k]; });
+    add = as.addAct;
+  } else {
+    var keys = { tip: ['category', 'title', 'text', 'author'], comment: ['text', 'author'], gear: ['section', 'name', 'tags', 'note'] }[kind];
+    row = adminFields_(kind, all(keys));
+    row.id = nextId_(rows); row.status = ST.approved; row.submitted = now; row.approved = now; row.clientId = clientId;
+    if (kind === 'tip') { row.mergedInto = ''; row.similar = ''; }
+    if (kind === 'comment') {
+      var tipId = tipNumber_(req.tipId);
+      if (!ts.tips().some(function (t) { return +t.id === tipId && t.status === ST.approved; })) fail_('bad_tip');
+      row.tipId = tipId;
+    }
+    add = { tip: ts.addTip, comment: ts.addComment, gear: ts.addGear }[kind];
+  }
+  add(row);
+  if (adm.log) adm.log([[now, who.name, kind, row.id, 'נוסף', '', logCell_(rowText_(row))]]);
+  return { ok: true, id: +row.id, added: true };
+}
+
+// Repeatable: a row already deleted (or never there) answers deleted: false, as a retry after a dropped reply would.
+function adminDelete_(req, ts, as, adm) {
+  var who = adminAuth_(req, adm), kind = req.kind;
+  if (!ADMIN_MAIN[kind]) fail_('bad_request');
+  var row = adminFind_(ts, as, kind, req.id);
+  if (!row) return { ok: true, deleted: false };
+  var now = kind === 'activity' ? as.now() : ts.now(), before = rowText_(row);
+  row.status = kind === 'activity' ? AST.hidden : ST.hidden;
+  row[ADMIN_MAIN[kind]] = '';
+  if (kind === 'activity') row.updated = now;
+  if (kind === 'tip') row.mergedInto = '';
+  adminSaver_(ts, as, kind)(row);
+  if (adm.log) adm.log([[now, who.name, kind, +row.id, 'נמחק', logCell_(before), '']]);
+  return { ok: true, deleted: true };
 }
 
 // ---------- managing page: registrations (docs/admin-plan.md §4.4) ----------

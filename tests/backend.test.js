@@ -839,6 +839,99 @@ console.log('admin queue tests passed');
 }
 console.log('admin edit tests passed');
 
+// ---------- managing page: add and delete (admin-plan §4.6) ----------
+{
+  const ST = ctx.ST, AST = ctx.AST;
+  const logged = [];
+  let orgs = {};
+  const adm = {
+    orgs: () => orgs, saveOrgs: (o) => { orgs = o; }, salt: () => 's',
+    hash: (salt, pw) => crypto.createHash('sha256').update(salt + '|' + pw).digest('hex'),
+    sign: (body) => crypto.createHmac('sha256', 'k').update(body).digest('hex'), nowMs: () => 3e12,
+    log: (rows) => logged.push(...P(rows))
+  };
+  const now = () => new Date(Date.UTC(2026, 9, 1, 9, 0));
+  const tips = [{ id: 1, status: ST.approved, category: 'ציוד', title: 'יתדות ארוכות', text: 'טקסט ארוך מספיק', author: '', submitted: '', approved: 'x', mergedInto: '', similar: '', clientId: 'c1' },
+                { id: 2, status: ST.pending, category: 'ציוד', title: 'ממתין', text: 'טקסט ארוך מספיק', author: '', submitted: '', approved: '', mergedInto: '', similar: '', clientId: 'c2' }];
+  const comments = [], gear = [{ id: 1, status: ST.approved, section: 'ביגוד', name: 'כובע', tags: '', note: '', submitted: '', approved: 'x', clientId: 'seed-1' },
+                                { id: 2, status: ST.approved, section: 'ביגוד', name: 'סנדלים', tags: '', note: '', submitted: '', approved: 'x', clientId: 'seed-2' }];
+  const acts = [], writes = [];
+  const ts = { tips: () => tips, comments: () => comments, gear: () => gear, tour: () => [],
+    addTip: (r) => tips.push(r), addComment: (r) => comments.push(r), addGear: (r) => gear.push(r),
+    updateTip: (r) => writes.push(['tip', r.id]), updateComment: (r) => writes.push(['comment', r.id]),
+    updateGear: (r) => writes.push(['gear', r.id]), updateTour() {}, now };
+  const as = { acts: () => acts, joins: () => [], addAct: (r) => acts.push(r), updateAct: (r) => writes.push(['activity', r.id]), now };
+  ctx.setAdminPassword_(adm, 'יאיר', 'password-1');
+  const tok = ctx.adminLogin_({ name: 'יאיר', password: 'password-1' }, adm).token;
+  const A = (req) => P(ctx.route(Object.assign({ token: tok }, req), null, ts, as, adm));
+  const add = (kind, fields, extra) => A(Object.assign({ action: 'adminAdd', kind, clientId: 'adm-' + kind + '-' + Math.random().toString(36).slice(2, 10), fields }, extra));
+
+  // no token, unknown kind, tour (steps are code): refused, nothing written
+  assert.strictEqual(P(ctx.route({ action: 'adminAdd', kind: 'tip', clientId: 'abcdefgh1', fields: {} }, null, ts, as, adm)).error, 'auth');
+  assert.strictEqual(P(ctx.route({ action: 'adminDelete', kind: 'tip', id: 1 }, null, ts, as, adm)).error, 'auth');
+  assert.strictEqual(add('tour', { title: 'x' }).error, 'bad_request');
+  assert.strictEqual(A({ action: 'adminAdd', kind: 'tip', clientId: 'bad id!', fields: {} }).error, 'bad_request');
+
+  // missing or bad fields: the same checks as an edit, and nothing added
+  assert.strictEqual(add('tip', { category: 'ציוד', title: 'כותרת', text: '' }).error, 'too_short');
+  assert.strictEqual(add('tip', { category: 'לא קיים', title: 'כותרת', text: 'טקסט ארוך' }).error, 'bad_category');
+  assert.strictEqual(add('gear', { section: 'ביגוד' }).error, 'too_short');
+  assert.strictEqual(add('activity', { topic: 'שחייה', start: '', end: '', tag: 'לכולם' }).error, 'bad_time');
+  assert.strictEqual(add('activity', { topic: 'שחייה', start: '2026-10-07T10:00', end: '2026-10-07T09:00', tag: 'לכולם' }).error, 'end_before_start');
+  assert.strictEqual(add('comment', { text: 'מצוין' }, { tipId: 2 }).error, 'bad_tip');        // only on an approved tip
+  assert.deepStrictEqual([tips.length, gear.length, acts.length, comments.length, logged.length], [2, 2, 0, 0, 0]);
+
+  // add each kind: approved / active at once, on the public lists, logged once
+  let r = A({ action: 'adminAdd', kind: 'tip', clientId: 'adm-tip-0001', fields: { category: 'ילדים', title: 'כובע רחב', text: 'השמש חזקה מאוד', author: '' } });
+  assert.deepStrictEqual(r, { ok: true, id: 3, added: true });
+  assert.deepStrictEqual(A({ action: 'adminAdd', kind: 'tip', clientId: 'adm-tip-0001', fields: { category: 'ילדים', title: 'כובע רחב', text: 'השמש חזקה מאוד' } }),
+    { ok: true, id: 3, added: false });                                                      // a retry: the same row
+  assert.strictEqual(tips.length, 3);
+  assert.strictEqual(tips[2].status, ST.approved); assert.ok(tips[2].approved);
+  assert.ok(ctx.tipsPublic_(ts).tips.some(t => t.id === 3 && t.title === 'כובע רחב'));
+  r = add('comment', { text: 'גם קרם הגנה' }, { tipId: 1 });
+  assert.deepStrictEqual([r.ok, r.id, comments[0].tipId, comments[0].status], [true, 1, 1, ST.approved]);
+  r = add('gear', { section: 'ים וחוף', name: 'שמשייה', tags: 'נוחות, ילדים', note: '' });
+  assert.deepStrictEqual([r.id, gear[2].tags, gear[2].status], [3, 'נוחות, ילדים', ST.approved]);
+  assert.ok(ctx.gearPublic_(ts).items.some(g => g.id === 3));
+  r = add('activity', { topic: 'שחייה בבוקר', start: '2026-10-07T07:00', end: '2026-10-07T08:00', tag: 'מבוגרים', ageFrom: 5, capacity: '' });
+  assert.deepStrictEqual([r.id, acts[0].owner, acts[0].status, acts[0].ageFrom, acts[0].capacity], [1, 'המארגנים', AST.active, '', '']);
+  assert.ok(ctx.activitiesPublic_(as).activities.some(a => a.topic === 'שחייה בבוקר'));
+  assert.deepStrictEqual(logged.map(l => [l[2], l[3], l[4]]), [['tip', 3, 'נוסף'], ['comment', 1, 'נוסף'], ['gear', 3, 'נוסף'], ['activity', 1, 'נוסף']]);
+  assert.ok(String(logged[0][6]).includes('כובע רחב'));
+  assert.ok(!JSON.stringify(A({ action: 'adminList', kind: 'comment' })).includes('clientId'));
+  assert.deepStrictEqual(A({ action: 'adminList', kind: 'comment' }).tips.map(t => t.id), [3, 1]);   // approved tips to add to
+
+  // delete: a tombstone — hidden, main field emptied, the id kept; gone from the admin list and the site; logged whole
+  logged.length = 0;
+  r = A({ action: 'adminDelete', kind: 'gear', id: 3 });
+  assert.deepStrictEqual(r, { ok: true, deleted: true });
+  assert.deepStrictEqual([gear[2].id, gear[2].status, gear[2].name], [3, ST.hidden, '']);
+  assert.ok(!A({ action: 'adminList', kind: 'gear' }).items.some(g => g.id === 3));
+  assert.ok(!ctx.gearPublic_(ts).items.some(g => g.id === 3));
+  assert.deepStrictEqual(A({ action: 'adminDelete', kind: 'gear', id: 3 }), { ok: true, deleted: false });   // a retry
+  assert.deepStrictEqual(A({ action: 'adminDelete', kind: 'gear', id: 99 }), { ok: true, deleted: false });
+  assert.strictEqual(A({ action: 'adminUpdate', kind: 'gear', id: 3, fields: { name: 'חזר' } }).error, 'not_found');
+  assert.strictEqual(add('gear', { section: 'ביגוד', name: 'כפכפים' }).id, 4);                 // the deleted id is never reused
+  assert.deepStrictEqual(logged.map(l => [l[2], l[3], l[4]]), [['gear', 3, 'נמחק'], ['gear', 4, 'נוסף']]);
+  assert.ok(String(logged[0][5]).includes('שמשייה'));
+  A({ action: 'adminDelete', kind: 'tip', id: 1 });
+  assert.ok(!ctx.tipsPublic_(ts).tips.some(t => t.id === 1));
+  assert.ok(!A({ action: 'adminList', kind: 'tip' }).items.some(t => t.id === 1));
+  assert.ok(!A({ action: 'adminList', kind: 'comment' }).tips.some(t => t.id === 1));
+  A({ action: 'adminDelete', kind: 'comment', id: 1 });
+  assert.strictEqual(A({ action: 'adminList', kind: 'comment' }).items.length, 0);
+  A({ action: 'adminDelete', kind: 'activity', id: 1 });
+  assert.deepStrictEqual([acts[0].status, acts[0].topic], [AST.hidden, '']);
+  assert.strictEqual(A({ action: 'adminList', kind: 'activity' }).items.length, 0);
+  assert.strictEqual(ctx.activitiesPublic_(as).activities.length, 0);
+  assert.strictEqual(A({ action: 'adminDelete', kind: 'tour', id: 'welcome/help' }).error, 'bad_request');
+  // a hidden row with its text is NOT a tombstone: still listed, so it can be restored
+  A({ action: 'adminUpdate', kind: 'gear', id: 1, status: 'hidden' });
+  assert.ok(A({ action: 'adminList', kind: 'gear' }).items.some(g => g.id === 1 && g.status === 'hidden'));
+}
+console.log('admin add/delete tests passed');
+
 // ---------- managing page: registrations (admin-plan §4.4) ----------
 {
   const logged = [];

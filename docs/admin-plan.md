@@ -1,6 +1,6 @@
 # Managing page — plan
 
-> **Open questions for Yair:** none. The decisions in §2 are derived; say if one is wrong.
+> **Open questions for Yair** (hand-kept): **§4.6, last box** — adding a registration from the managing page (a or b). The decisions in §2 are derived; say if one is wrong.
 
 **Status:** §4.1-§4.4 done 01/10/2026, §4.5 done except Yair's deploy + password (the second §4.5 box), which is his.
 
@@ -84,11 +84,31 @@
 - [ ] Hand Yair `Code.gs` on the clipboard: deploy a new version, then **מארגנים → סיסמת ניהול** once. Then a live check together: log in on his phone, the waiting list loads
 - [x] `SETUP.md`: the managing page replaces the sheet sections for day-to-day work (the sheet sections stay as the fallback)
 
+#### 4.6 Add, delete, background refresh (Yair, 01/10/2026)
+> *"all tabs update should happen in the BG when i enter the site · we need add item section, for each tab, in top of the list · add delete item (with warning) to each list item · in פעילויות and ציוד there are suddenly no items (after i succesfully changed 1 event)"*
+
+**🔴 Supersedes §2 "Nothing is deleted"** for the managing page's own delete. A delete is a **tombstone**, not a removed row: status הוסתר and the main field emptied (tip title, comment text, gear name, activity topic). The id stays taken, so a gear id that visitors' ticks point at is never reused (gear-plan: item N = row N). The status stays inside each tab's dropdown validation, where a new "נמחק" value would be refused by the sheet. The whole row goes to יומן ניהול, so it can be typed back. A tombstone is gone from every admin list and from the site.
+
+- [x] Backend `adminAdd {kind, clientId, fields, tipId?}`: tip / comment / gear / activity, checked like an edit with every required field; goes straight to מאושר / פעיל (stamped); a retry with the same clientId returns the same id; logged (field `נוסף`); clears the public caches
+  - an activity added here is owned by **המארגנים** (like the demo rows), so no family can edit it
+- [x] Backend `adminDelete {kind, id}`: the tombstone above, logged with the whole row (field `נמחק`); already deleted or not found = `deleted: false`, ok (a retry); `adminList` / `adminUpdate` skip tombstones; comment list carries the approved tips (for adding a comment)
+- [x] Backend tests: add per kind, a retried add, missing fields, delete per kind, a retried delete, a deleted row gone from the list and the public reply, an edit of a deleted row = not_found
+  - 3 mutations (add retry duplicates, tombstones listed, delete retry fails) all turned them red
+- [x] `admin.js`: **+ הוספה** at the top of each list (not הדרכה: steps are code, §3; not הרשמות: see the open box below) opening the edit screen empty; a 🗑 on each card with a confirm naming the item; הרשמות' 🗑 = the existing cancel
+- [x] `admin.js`: on entering the page (saved login or a fresh one) every tab refreshes in the background, one request after another (each takes the script lock)
+- [x] `admin.js` robustness (the "no items" report: not reproduced in the vm with the live rows, so the likely cause is a request that hung or failed on the live connection): a request that hangs 30s is retried like a dropped one; a list that cannot load says so with רענון instead of looking empty; a background refresh of another tab no longer disables this tab's רענון
+- [x] e2e: add a tip / gear item / activity / comment, delete one with the confirm (and cancel the confirm), the background refresh fills an unvisited tab, a hung list request recovers
+  - found while building: a background request made under the old login came back `auth` after a new login and logged it out. Now a reply to an older login's request is ignored, and the background round stops when the login changes
+  - 5 mutations to `admin.js` (no prefetch, delete ignoring the confirm, no timeout, stale auth logging out, new row not shown at once) all turned it red
+- [x] Gate: all gates green; stamp; build; `Code.gs` on Yair's clipboard
+- [ ] Adding a registration from the managing page: <Yair: > — a registration needs the family's own code, which the organizer never sets (§3). Options: (a) not here: the family registers on the site, (b) the organizer adds name + stay with no code, and the family's first save under that name sets the code. (a) is today's behaviour
+
 ## 5. Log
 - 01/10/2026 — planned (this file). The 30/09 payments plan superseded.
 - 01/10/2026 — §4.1 (login) and §4.2 (waiting list + review page) built and pushed. Backend not deployed yet (§4.5).
 - 01/10/2026 — §4.3 (edit anything current: tips, comments, gear, activities, tour texts) built and pushed.
 - 01/10/2026 — §4.4 (registrations: list, edit the stay priced by calc.js, cancel, unlock) built and pushed.
+- 01/10/2026 — §4.6 (add, delete, background refresh, request timeout) built and pushed; Code.gs on Yair's clipboard to deploy.
 
 ## 6. ~~The 30/09/2026 plan~~ — superseded 01/10/2026 (payments are out; see §1)
 

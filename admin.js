@@ -14,7 +14,7 @@
                  bad_merge: 'אפשר למזג רק לטיפ מאושר אחר', not_found: 'הפריט כבר לא קיים בגיליון',
                  bad_status: 'סטטוס לא מוכר', bad_time: 'הזמן חייב להיות בימי הקמפינג',
                  end_before_start: 'הסיום חייב להיות אחרי ההתחלה', bad_tag: 'קהל לא מוכר', bad_age: 'הגילים לא תקינים',
-                 bad_capacity: 'מספר המקומות לא תקין (עד 500)', network: 'אין חיבור לשרת. נסו שוב.', server_error: 'שגיאה בשרת. נסו שוב.' };
+                 bad_capacity: 'מספר המקומות לא תקין (עד 500)', bad_tip: 'צריך לבחור טיפ מאושר', network: 'אין חיבור לשרת. נסו שוב.', server_error: 'שגיאה בשרת. נסו שוב.' };
   var LIMITS = { title: 60, text: 400, comment: 300, author: 40, name: 60, tags: 100, note: 200 };
   var session = null, queue = null, filter = '', current = null, view = 'queue';
 
@@ -25,16 +25,28 @@
   function writeJson(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ignore */ } }
 
   // Google's web-app reply step fails intermittently (~1 in 3 replies dropped after the script ran): retry until JSON.
+  // A reply that hangs is given up after 30s and retried the same way (every admin write is safe to repeat).
+  var TIMEOUT = window.ACHZIV_ADMIN_TIMEOUT || 30000;              // the e2e test shortens it
   function api(body, attempt) {
     attempt = attempt || 1;
-    return fetch(C.apiUrl, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })
+    var ac = window.AbortController ? new AbortController() : null, timer = ac && setTimeout(function () { ac.abort(); }, TIMEOUT);
+    return fetch(C.apiUrl, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body),
+                             signal: ac ? ac.signal : undefined })
       .then(function (r) { return r.json(); })
+      .then(function (res) { clearTimeout(timer); return res; }, function (e) { clearTimeout(timer); throw e; })
       .catch(function () {
         if (attempt >= 4) return { ok: false, error: 'network' };
         return new Promise(function (res) { setTimeout(res, 400 * attempt); }).then(function () { return api(body, attempt + 1); });
       });
   }
-  function authed(body) { body.token = session && session.token; return api(body).then(check); }
+  function authed(body) {
+    var tok = body.token = session && session.token;
+    return api(body).then(function (res) {
+      // a reply to a request made under an older login (a background refresh still on its way) must not log out this one
+      if (res.error === 'auth' && (!session || session.token !== tok)) throw res;
+      return check(res);
+    });
+  }
   // 'auth' = token expired, forged or its password changed: back to login. 'bad_request' on an admin action =
   // the deployed script predates the managing page.
   function check(res) {
@@ -86,6 +98,7 @@
         writeJson(TOKEN_KEY, session);
         $('login-pw').value = ''; say(msg, '');
         openQueue();
+        prefetchAll();
         return;
       }
       if (res.error === 'bad_request') { $('adm-server').hidden = false; return say(msg, ''); }
@@ -273,6 +286,8 @@
             sub: function (x) { return 'סיור ' + x.tourName + ' · צעד ' + x.step; } }
   };
   var ELIMITS = { topic: 60, host: 60, description: 600, gearList: 200, tourTitle: 200, tourText: 2000 };
+  // Tour bubbles are code (a step cannot be added or removed); a registration is made by the family, with its own code.
+  var ADDABLE = { tip: 1, comment: 1, gear: 1, activity: 1 }, DELETABLE = { tip: 1, comment: 1, gear: 1, activity: 1, family: 1 };
   var lists = {}, listFilter = '', editing = null;
 
   function dayLabel(iso) {
@@ -309,25 +324,31 @@
     });
     $('list-items').innerHTML = shown.map(function (x) {
       var st = x.status && x.status !== 'approved' && x.status !== 'active' && x.status !== 'registered' ? ' · <b>' + (STATUS[x.status] || esc(x.status)) + '</b>' : '';
-      return '<li><button type="button" class="adm-card" id="' + itemDomId(kind, x.id) + '" data-id="' + esc(x.id) + '">' +
+      return '<li class="adm-row"><button type="button" class="adm-card" id="' + itemDomId(kind, x.id) + '" data-id="' + esc(x.id) + '">' +
         '<span class="adm-title">' + esc(cfg.title(x)) + '</span>' +
-        '<span class="adm-sub">' + esc(cfg.sub(x)) + st + '</span></button></li>';
+        '<span class="adm-sub">' + esc(cfg.sub(x)) + st + '</span></button>' +
+        (DELETABLE[kind] ? '<button type="button" class="adm-del" data-del="' + esc(x.id) + '" aria-label="' +
+          esc((kind === 'family' ? 'ביטול ההרשמה: ' : 'מחיקה: ') + cfg.title(x)) + '">🗑</button>' : '') + '</li>';
     }).join('');
-    $('list-state').textContent = !data ? 'טוען…' : !all.length ? 'אין עדיין שורות.' : !shown.length ? 'לא נמצא.' : '';
+    $('list-add').hidden = !ADDABLE[kind];
+    $('list-add').textContent = ADDABLE[kind] ? '+ הוספת ' + cfg.one : '';
+    $('list-state').textContent = !data ? (listFailed[kind] ? 'לא הצלחנו לטעון את הרשימה. נסו "רענון".' : 'טוען…') :
+      !all.length ? 'אין עדיין שורות.' : !shown.length ? 'לא נמצא.' : '';
   }
 
-  var listLoading = {};
+  var listLoading = {}, listFailed = {};
   function refreshList(kind) {
     if (listLoading[kind]) return listLoading[kind];
-    $('list-refresh').disabled = true;
+    if (view === kind) $('list-refresh').disabled = true;     // a background refresh of another tab leaves this one alone
     var req = kind === 'family' ? { action: 'adminFamilies' } : { action: 'adminList', kind: kind };
     listLoading[kind] = authed(req).then(function (res) {
       if (!res.ok) throw res;
       if (kind === 'family') famListed(res);
-      lists[kind] = res; writeJson(LIST_KEY + kind, res);
-      if (/bad/.test($('list-msg').className)) say($('list-msg'), '');
+      lists[kind] = res; writeJson(LIST_KEY + kind, res); listFailed[kind] = false;
+      if (view === kind && /bad/.test($('list-msg').className)) say($('list-msg'), '');
     }).catch(function (res) {
-      if (res && res.error && res.error !== 'auth' && res.error !== 'bad_request') say($('list-msg'), ERRORS[res.error] || 'לא הצלחנו לרענן.', 'bad');
+      listFailed[kind] = true;
+      if (view === kind && res && res.error !== 'auth' && res.error !== 'bad_request') say($('list-msg'), ERRORS[res && res.error] || 'לא הצלחנו לרענן.', 'bad');
     }).then(function () {
       listLoading[kind] = null;
       if (view === kind) { $('list-refresh').disabled = false; if (!$('adm-list').hidden) renderList(); }
@@ -358,9 +379,45 @@
   });
   $('list-refresh').addEventListener('click', function () { refreshList(view); });
   $('list-items').addEventListener('click', function (e) {
+    var d = e.target.closest('.adm-del');
+    if (d) return deleteItem(view, d.getAttribute('data-del'), d);
     var b = e.target.closest('.adm-card');
     if (b) openEdit(view, b.getAttribute('data-id'), true);
   });
+  $('list-add').addEventListener('click', function () {
+    if (!lists[view]) return say($('list-msg'), 'הרשימה עוד נטענת. רגע…');
+    openEdit(view, null, true, true);
+  });
+
+  // ---------- delete (docs/admin-plan.md §4.6): asks first, then waits for the server's verdict ----------
+  function deleteItem(kind, id, btn) {
+    var x = findListed(kind, id);
+    if (!x) return;
+    var name = EDIT[kind].title(x), family = kind === 'family';
+    var ask = family ? 'לבטל את ההרשמה של ' + x.family + '? היא תוסר מהרשימה, ובגיליון המארגנים תסומן "בוטל". המשפחה תוכל להירשם מחדש.'
+      : 'למחוק את ' + EDIT[kind].one + ' "' + name + '"?\nהוא יוסר מהאתר ומהרשימה כאן. התוכן נשמר ביומן הניהול בגיליון.';
+    if (!confirm(ask)) return;
+    btn.disabled = true; say($('list-msg'), family ? 'מבטל…' : 'מוחק…');
+    authed(family ? { action: 'adminFamilyCancel', user: x.id } : { action: 'adminDelete', kind: kind, id: x.id }).then(function (res) {
+      if (!res.ok) throw res;                        // deleted / removed: false = a retry after a dropped reply, also done
+      lists[kind].items = lists[kind].items.filter(function (y) { return String(y.id) !== String(x.id); });
+      writeJson(LIST_KEY + kind, lists[kind]);
+      if (view === kind) { renderList(); say($('list-msg'), family ? 'ההרשמה של ' + x.family + ' בוטלה.' : '"' + name + '" נמחק.', 'good'); }
+    }).catch(function (res) {
+      btn.disabled = false;
+      if (res && (res.error === 'auth' || res.error === 'bad_request')) return;
+      say($('list-msg'), ERRORS[res && res.error] || 'לא נמחק. נסו שוב.', 'bad');
+    });
+  }
+
+  // ---------- on entering the page, every tab refreshes in the background, one request after another ----------
+  var PREFETCH = ['tip', 'comment', 'gear', 'activity', 'tour', 'family'];
+  function prefetchAll() {
+    var tok = session && session.token;               // a logout or a new login ends this round
+    PREFETCH.reduce(function (p, kind) {
+      return p.then(function () { if (session && session.token === tok) return refreshList(kind); });
+    }, Promise.resolve());
+  }
 
   // ---------- the edit screen ----------
   function statusChoice(statuses, value) {
@@ -397,15 +454,35 @@
     var data = lists[kind];
     return data ? data.items.filter(function (x) { return String(x.id) === String(id); })[0] : null;
   }
-  function openEdit(kind, id, push) {
-    var x = findListed(kind, id), data = lists[kind];
+  // A new row starts from these; the server fills the id, the status (מאושר / פעיל) and the dates.
+  function blankItem(kind, data) {
+    if (kind === 'tip') return { category: (data.categories || [])[0] || '', title: '', text: '', author: '' };
+    if (kind === 'comment') return { text: '', author: '' };
+    if (kind === 'gear') return { section: (data.sections || [])[0] || '', name: '', tags: '', note: '' };
+    var day = data.trip.from;
+    return { topic: '', host: '', description: '', start: day + 'T10:00', end: day + 'T11:00', tag: (data.tags || [])[0] || '',
+             ageFrom: null, ageTo: null, capacity: 0, required: '', suggested: '' };
+  }
+  function commentTips(data) {
+    if (data.tips) return data.tips;
+    return ((lists.tip && lists.tip.items) || []).filter(function (t) { return t.status === 'approved'; });
+  }
+  function newClientId() { return 'adm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
+  function openEdit(kind, id, push, isNew) {
+    var data = lists[kind], x = isNew ? blankItem(kind, data) : findListed(kind, id);
     if (!x) return openList(kind);
-    editing = { kind: kind, id: x.id, status: x.status };
-    if (push) history.pushState({ edit: kind + '-' + x.id }, '');
+    editing = isNew ? { kind: kind, id: null, isNew: true, clientId: newClientId() } : { kind: kind, id: x.id, status: x.status };
+    if (push) history.pushState({ edit: kind + '-' + (isNew ? 'new' : x.id) }, '');
     $('edit-extra').innerHTML = '';
     if (kind === 'family') return openFamily(x);
-    var html = '', meta = EDIT[kind].one + ' ' + x.id;
-    if (kind === 'tip') {
+    var html = '', meta = isNew ? EDIT[kind].one + ' חדש' + (kind === 'activity' || kind === 'comment' ? 'ה' : '') +
+      ': יופיע באתר מיד עם השמירה' : EDIT[kind].one + ' ' + x.id;
+    if (kind === 'comment' && isNew) {
+      html = '<label class="adm-field">על הטיפ<select id="f-tipId">' + commentTips(data).map(function (t) {
+        return '<option value="' + t.id + '">' + esc(t.title) + '</option>';
+      }).join('') + '</select></label>' +
+             field('text', 'טקסט', x.text, LIMITS.comment, true) + field('author', 'שם (לא חובה)', x.author, LIMITS.author);
+    } else if (kind === 'tip') {
       html = choice('category', 'קטגוריה', x.category, data.categories || []) + field('title', 'כותרת', x.title, LIMITS.title) +
              field('text', 'טקסט', x.text, LIMITS.text, true) + field('author', 'שם (לא חובה)', x.author, LIMITS.author);
       if (x.mergedInto) meta += ' · מוזג לטיפ ' + x.mergedInto;
@@ -424,14 +501,14 @@
              '<div id="f-ages" class="adm-pair">' + num('ageFrom', 'מגיל', x.ageFrom, 99) + num('ageTo', 'עד גיל', x.ageTo, 99) + '</div>' +
              num('capacity', 'מקומות (ריק = בלי הגבלה)', x.capacity, 500) +
              field('required', 'חובה להביא', x.required, ELIMITS.gearList) + field('suggested', 'מומלץ להביא', x.suggested, ELIMITS.gearList);
-      meta += ' · של ' + x.owner + ' · נרשמו ' + x.taken;
+      if (!isNew) meta += ' · של ' + x.owner + ' · נרשמו ' + x.taken;
     } else {
       html = field('title', 'כותרת', x.title, ELIMITS.tourTitle) + field('text', 'טקסט', x.text, ELIMITS.tourText, true) +
              '<p class="hint">שדה ריק מציג את הטקסט המובנה. שורה ריקה פותחת פסקה, **כך** מודגש.</p>' +
              '<details class="adm-default"><summary>הטקסט המובנה</summary><p><b>' + esc(x.defTitle) + '</b></p>' + tourRender_(x.defText) + '</details>';
       meta = 'סיור ' + x.tourName + ' · צעד ' + x.step;
     }
-    $('edit-fields').innerHTML = html + statusChoice(data.statuses, x.status);
+    $('edit-fields').innerHTML = html + (isNew ? '' : statusChoice(data.statuses, x.status));
     $('edit-meta').textContent = meta;
     if (kind === 'tour') {
       $('f-title').placeholder = x.defTitle;
@@ -473,6 +550,7 @@
     e.preventDefault();
     if (!editing) return;
     if (editing.kind === 'family') return saveFamily();
+    if (editing.isNew) return saveNew();
     var c = editing, body = { action: 'adminUpdate', kind: c.kind, id: c.id, fields: editFields(c.kind) };
     var st = $('e-status') ? $('e-status').value : '';
     if (st && st !== c.status) body.status = st;
@@ -499,6 +577,38 @@
   $('edit-back').addEventListener('click', function () {
     if (history.state && history.state.edit) history.back(); else openList(view);
   });
+
+  // A new row: the clientId was made when the form opened, so saving again after a lost reply never adds it twice.
+  function saveNew() {
+    var c = editing, body = { action: 'adminAdd', kind: c.kind, clientId: c.clientId, fields: editFields(c.kind) };
+    if (c.kind === 'comment') body.tipId = +$('f-tipId').value;
+    $('edit-save').disabled = true; $('edit-back').disabled = true; say($('edit-msg'), 'שומר…');
+    authed(body).then(function (res) {
+      if (!res.ok) throw res;
+      var x = Object.assign({ id: res.id, status: c.kind === 'activity' ? 'active' : 'approved' }, body.fields);
+      if (c.kind === 'activity') {
+        x.owner = 'המארגנים'; x.taken = 0;
+        x.capacity = +x.capacity || 0; x.ageFrom = x.ageFrom ? +x.ageFrom : null; x.ageTo = x.ageTo ? +x.ageTo : null;
+      }
+      if (c.kind === 'comment') {
+        x.tipId = body.tipId;
+        x.tipTitle = (commentTips(lists.comment).filter(function (t) { return +t.id === body.tipId; })[0] || {}).title || '';
+      }
+      var list = lists[c.kind];                         // shown at once; the refresh brings the server's form
+      if (!list.items.some(function (y) { return +y.id === +res.id; })) list.items.unshift(x);
+      writeJson(LIST_KEY + c.kind, list);
+      var pending = listLoading[c.kind];                // a refresh already on its way predates this row
+      editing = null;
+      if (history.state && history.state.edit) history.back();
+      openList(c.kind, EDIT[c.kind].one + ' ' + res.id + ' נוסף.');
+      if (pending) pending.then(function () { refreshList(c.kind); });
+    }).catch(function (res) {
+      $('edit-save').disabled = false; $('edit-back').disabled = false;
+      if (res && res.error === 'auth') return;
+      if (res && res.error === 'bad_request') return say($('edit-msg'), '');
+      say($('edit-msg'), ERRORS[res && res.error] || 'לא נשמר. נסו שוב.', 'bad');
+    });
+  }
 
   // ---------- registrations (docs/admin-plan.md §4.4) ----------
   // A family's stay is edited with the calculator's own pieces (calc.js: the same categories, checks and prices). The
@@ -691,5 +801,5 @@
   session = readJson(TOKEN_KEY);
   if (session && !(session.token && session.exp > Date.now())) { session = null; writeJson(TOKEN_KEY, null); }
   queue = session ? readJson(QUEUE_KEY) : null;
-  if (session) openQueue(); else show('login');
+  if (session) { openQueue(); prefetchAll(); } else show('login');
 })();
