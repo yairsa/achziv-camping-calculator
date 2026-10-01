@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css?v=d3c4871d">
-  <link rel="stylesheet" href="admin.css?v=34339084">
+  <link rel="stylesheet" href="admin.css?v=4493a2e3">
 </head>
 <body class="adm">
   <header class="top adm-top">
@@ -44,6 +44,7 @@
       <button type="button" data-view="gear">ציוד</button>
       <button type="button" data-view="activity">פעילויות</button>
       <button type="button" data-view="tour">הדרכה</button>
+      <button type="button" data-view="family">הרשמות</button>
     </nav>
 
     <!-- ===== the waiting list ===== -->
@@ -106,13 +107,15 @@
           </div>
           <div class="actions"><button type="submit" class="btn-primary" id="edit-save">שמירה</button></div>
           <p id="edit-msg" class="msg" role="status"></p>
+          <div id="edit-extra"></div>
         </form>
       </div>
     </section>
   </main>
 
   <script src="prices.js?v=3356155e"></script>
+  <script src="calc.js?v=71cdda73"></script>
   <script src="tour-texts.js?v=ff531dfa"></script>
-  <script src="admin.js?v=139511bb"></script>
+  <script src="admin.js?v=2e13d855"></script>
 </body>
 </html>

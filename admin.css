@@ -57,3 +57,10 @@
 .adm-preview { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; margin-bottom: 12px; background: var(--card); }
 .adm-preview h3 { margin: 0 0 6px; font-size: 1.05rem; }
 .adm-preview p { margin: 0 0 8px; }
+
+/* §4.4: a family's registration, edited with the calculator's pieces (style.css's .counter, .period, .totals) */
+.adm-fam { margin: 0 0 8px; font-size: 1.2rem; overflow-wrap: anywhere; }
+#fam-add { width: 100%; margin-bottom: 4px; }
+.adm-fam-acts { display: grid; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+.adm-fam-acts button { width: 100%; padding: 12px; }
+.adm-fam-acts .btn-secondary { border-style: solid; }

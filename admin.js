@@ -284,7 +284,12 @@
     return dayLabel(s) + ', ' + a.start.slice(11, 16) + ' עד ' + (e === s ? '' : dayLabel(e) + ', ') + a.end.slice(11, 16);
   }
 
-  function itemDomId(kind, id) { return 'l-' + kind + '-' + String(id).replace(/[^A-Za-z0-9_-]/g, '-'); }
+  function itemDomId(kind, id) {           // unique for any id: a family's Hebrew name, a tour's welcome/help
+    return 'l-' + kind + '-' + String(id).replace(/[^A-Za-z0-9_-]/g, function (ch) {
+      var n = ch.charCodeAt(0);
+      return n < 128 ? '-' : '-' + n.toString(16);
+    });
+  }
   function renderList() {
     var kind = view, data = lists[kind], cfg = EDIT[kind];
     var all = data ? data.items : [], counts = {};
@@ -303,7 +308,7 @@
       return [cfg.title(x), cfg.sub(x), x.text, x.author, x.tags, x.note, x.description, x.host].join(' ').toLowerCase().indexOf(q) >= 0;
     });
     $('list-items').innerHTML = shown.map(function (x) {
-      var st = x.status && x.status !== 'approved' && x.status !== 'active' ? ' · <b>' + (STATUS[x.status] || esc(x.status)) + '</b>' : '';
+      var st = x.status && x.status !== 'approved' && x.status !== 'active' && x.status !== 'registered' ? ' · <b>' + (STATUS[x.status] || esc(x.status)) + '</b>' : '';
       return '<li><button type="button" class="adm-card" id="' + itemDomId(kind, x.id) + '" data-id="' + esc(x.id) + '">' +
         '<span class="adm-title">' + esc(cfg.title(x)) + '</span>' +
         '<span class="adm-sub">' + esc(cfg.sub(x)) + st + '</span></button></li>';
@@ -315,8 +320,10 @@
   function refreshList(kind) {
     if (listLoading[kind]) return listLoading[kind];
     $('list-refresh').disabled = true;
-    listLoading[kind] = authed({ action: 'adminList', kind: kind }).then(function (res) {
+    var req = kind === 'family' ? { action: 'adminFamilies' } : { action: 'adminList', kind: kind };
+    listLoading[kind] = authed(req).then(function (res) {
       if (!res.ok) throw res;
+      if (kind === 'family') famListed(res);
       lists[kind] = res; writeJson(LIST_KEY + kind, res);
       if (/bad/.test($('list-msg').className)) say($('list-msg'), '');
     }).catch(function (res) {
@@ -395,6 +402,8 @@
     if (!x) return openList(kind);
     editing = { kind: kind, id: x.id, status: x.status };
     if (push) history.pushState({ edit: kind + '-' + x.id }, '');
+    $('edit-extra').innerHTML = '';
+    if (kind === 'family') return openFamily(x);
     var html = '', meta = EDIT[kind].one + ' ' + x.id;
     if (kind === 'tip') {
       html = choice('category', 'קטגוריה', x.category, data.categories || []) + field('title', 'כותרת', x.title, LIMITS.title) +
@@ -463,6 +472,7 @@
   $('edit-form').addEventListener('submit', function (e) {
     e.preventDefault();
     if (!editing) return;
+    if (editing.kind === 'family') return saveFamily();
     var c = editing, body = { action: 'adminUpdate', kind: c.kind, id: c.id, fields: editFields(c.kind) };
     var st = $('e-status') ? $('e-status').value : '';
     if (st && st !== c.status) body.status = st;
@@ -488,6 +498,193 @@
   });
   $('edit-back').addEventListener('click', function () {
     if (history.state && history.state.edit) history.back(); else openList(view);
+  });
+
+  // ---------- registrations (docs/admin-plan.md §4.4) ----------
+  // A family's stay is edited with the calculator's own pieces (calc.js: the same categories, checks and prices). The
+  // server checks and prices it again with that very code, and keeps the family's code as it is. Codes are never shown.
+  var K = window.CampCalc, fam = null;
+  var NF = new Intl.NumberFormat('he-IL', { maximumFractionDigits: 0 });
+  var MAIN = C.categories.filter(function (c) { return c.main; }), DISC = C.categories.filter(function (c) { return !c.main; });
+  var DATES = [];
+  for (var dt = K.toTime(C.dateRangeStart); dt <= K.toTime(C.dateRangeEnd); dt += K.DAY) DATES.push(K.toIso(dt));
+  STATUS.registered = 'רשומה'; STATUS.locked = 'נעולה';
+  ERRORS.bad_stay = 'יש בעיה בתאריכים או בהרכב: ראו את ההערות'; ERRORS.too_big = 'יותר מדי תקופות';
+  function money(n) { return NF.format(n || 0) + ' ₪'; }
+  function nightsWord(n) { return n > 0 ? n + (n === 1 ? ' לילה' : ' לילות') : '—'; }
+  function stayText(x) {
+    var ps = (x.data && x.data.periods) || [];
+    return ps.map(function (p) { return K.dm(p.from) + ' עד ' + K.dm(p.to); }).join(' · ') + ' · ' + x.maxPeople + ' לנים';
+  }
+  EDIT.family = { label: 'הרשמות', one: 'הרשמה', title: function (x) { return x.family; },
+                  sub: function (x) { return stayText(x) + ' · ' + money(x.full); } };
+  function famListed(res) {
+    res.items.forEach(function (x) { x.id = x.user; x.status = x.locked ? 'locked' : 'registered'; });
+  }
+  function famState(d) {
+    d = d || {};
+    var ps = d.periods && d.periods.length ? d.periods : [{ from: C.defaultFrom, to: C.defaultTo }];
+    return { base: Object.assign(K.emptyCounts(), d.base), periods: ps.map(function (p) {
+      return { from: p.from, to: p.to, custom: !!p.custom, counts: Object.assign(K.emptyCounts(), p.counts) };
+    }) };
+  }
+
+  function counterHtml(scope, cat, n) {
+    var id = 'fc-' + scope + '-' + cat.id;
+    return '<div class="counter"><div class="who"><label for="' + id + '"><span class="lbl">' + esc(cat.label) + '</span>' +
+      '<span class="meta">' + (cat.ages ? esc(cat.ages) + ' · ' : '') + (cat.price ? money(cat.price) + ' ' + (cat.unit || 'ללילה') : 'חינם') +
+      '</span></label></div><div class="stepper">' +
+      '<button type="button" class="step" data-d="1" aria-label="הוספת ' + esc(cat.label) + '">+</button>' +
+      '<input id="' + id + '" data-scope="' + scope + '" data-cat="' + cat.id + '" type="number" inputmode="numeric" min="0" max="99" value="' + (n || 0) + '">' +
+      '<button type="button" class="step" data-d="-1" aria-label="הפחתת ' + esc(cat.label) + '">−</button></div></div>';
+  }
+  function countersHtml(scope, counts) {
+    var group = function (cats) { return cats.map(function (c) { return counterHtml(scope, c, counts[c.id]); }).join(''); };
+    var any = function (cats) { return cats.some(function (c) { return counts[c.id] > 0; }); };
+    return '<div class="counters">' + group(MAIN) + '</div>' +
+      '<details' + (any(DISC) ? ' open' : '') + '><summary>הנחות וזכאויות</summary><div class="counters">' + group(DISC) + '</div></details>' +
+      '<details' + (any(C.extras) ? ' open' : '') + '><summary>תוספות</summary><div class="counters">' + group(C.extras) + '</div></details>';
+  }
+  function dateSel(id, label, v) {
+    var opts = DATES.indexOf(v) < 0 ? DATES.concat([v]).sort() : DATES;
+    return '<label for="' + id + '">' + label + '<br><select id="' + id + '">' + opts.map(function (d) {
+      return '<option value="' + d + '"' + (d === v ? ' selected' : '') + '>' + K.weekday(d) + ' ' + K.dmy(d) + '</option>';
+    }).join('') + '</select></label>';
+  }
+
+  function openFamily(x) {
+    fam = { state: famState(x.data) };
+    $('edit-meta').textContent = 'הרשמה · עודכן ' + when({ ms: x.ms, submitted: x.updated });
+    $('edit-preview-wrap').hidden = true;
+    renderFamily();
+    say($('edit-msg'), '');
+    $('edit-back').disabled = false;
+    show('edit');
+  }
+  function renderFamily() {
+    var x = findListed('family', editing.id), s = fam.state, multi = s.periods.length > 1;
+    var html = '<h2 class="adm-fam">' + esc(x.family) + '</h2>' +
+      (x.locked ? '<p class="msg bad" id="fam-locked">ההרשמה נעולה ל־15 דקות אחרי קודים שגויים.</p>' : '') +
+      '<fieldset class="period"><legend>הרכב המשפחה</legend>' + countersHtml('b', s.base) + '</fieldset>';
+    s.periods.forEach(function (p, i) {
+      html += '<fieldset class="period"><legend>' + (multi ? 'תקופה ' + (i + 1) : 'תאריכי השהייה') + '</legend>' +
+        '<div class="dates">' + dateSel('fp-from-' + i, 'הגעה', p.from) + dateSel('fp-to-' + i, 'עזיבה', p.to) +
+        '<span class="nights" id="fp-n-' + i + '">' + nightsWord(K.nightsBetween(p.from, p.to)) + '</span></div>' +
+        '<div class="check"><label><input type="checkbox" id="fp-custom-' + i + '"' + (p.custom ? ' checked' : '') + '> הרכב שונה בתקופה הזו</label></div>' +
+        (p.custom ? '<div class="custom"><p class="hint">ההרכב בתקופה הזו בלבד:</p>' + countersHtml('p' + i, p.counts) + '</div>' : '') +
+        (multi ? '<button type="button" class="btn-link" data-remove="' + i + '">מחיקת תקופה ' + (i + 1) + '</button>' : '') + '</fieldset>';
+    });
+    html += '<button type="button" class="btn-secondary" id="fam-add">+ תקופה נוספת</button><div id="fam-result" aria-live="polite"></div>';
+    $('edit-fields').innerHTML = html;
+    $('edit-extra').innerHTML = '<div class="adm-fam-acts">' +
+      (x.locked ? '<button type="button" class="btn-secondary" id="fam-unlock">שחרור הנעילה</button>' : '') +
+      '<button type="button" class="btn-secondary adm-reject" id="fam-cancel">ביטול ההרשמה</button></div>' +
+      '<p class="hint">הקוד של המשפחה לא מוצג ולא משתנה כאן. משפחה ששכחה את הקוד: מבטלים, והיא נרשמת מחדש.</p>';
+    famResult();
+  }
+  // The calculator's own warnings and totals, with what the sheet holds now beside them.
+  function famResult() {
+    var x = findListed('family', editing.id), s = fam.state, r = K.calcAll(s), w = K.warnings(s);
+    $('fam-result').innerHTML = (w.length ? '<ul class="warn">' + w.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>' : '') +
+      '<div class="totals"><div class="total"><span>מחיר מלא</span><strong>' + money(r.full) + '</strong></div>' +
+      '<div class="total group"><span>מחיר קבוצתי (מ־' + C.groupMinPeople + ' לנים)</span><strong>' + money(r.group) + '</strong></div></div>' +
+      '<p class="hint">עד <strong>' + r.maxPeople + '</strong> לנים. עכשיו בגיליון: ' + money(x.full) + ' / ' + money(x.group) + ', עד ' + x.maxPeople + ' לנים.</p>';
+    $('edit-save').disabled = !!w.length;
+  }
+  function isFam() { return editing && editing.kind === 'family' && fam; }
+  function setCount(input, v) {
+    v = Math.max(0, Math.min(99, parseInt(v, 10) || 0));
+    var sc = input.getAttribute('data-scope'), counts = sc === 'b' ? fam.state.base : fam.state.periods[+sc.slice(1)].counts;
+    counts[input.getAttribute('data-cat')] = v; input.value = v;
+    famResult();
+  }
+  $('edit-fields').addEventListener('click', function (e) {
+    if (!isFam()) return;
+    var b = e.target.closest('.step, [data-remove], #fam-add');
+    if (!b) return;
+    var ps = fam.state.periods;
+    if (b.classList.contains('step')) {
+      var input = b.parentNode.querySelector('input');
+      setCount(input, (parseInt(input.value, 10) || 0) + (+b.getAttribute('data-d')));
+    } else if (b.id === 'fam-add') {
+      var from = ps[ps.length - 1].to;
+      ps.push({ from: from, to: K.toIso(K.toTime(from) + K.DAY), custom: false, counts: K.emptyCounts() });
+      renderFamily();
+      $('fp-from-' + (ps.length - 1)).focus();
+    } else {
+      var i = +b.getAttribute('data-remove');
+      if (!confirm('למחוק את תקופה ' + (i + 1) + ' (' + K.dm(ps[i].from) + ' עד ' + K.dm(ps[i].to) + ')?')) return;
+      ps.splice(i, 1);
+      renderFamily();
+    }
+  });
+  $('edit-fields').addEventListener('input', function (e) {
+    if (isFam() && e.target.hasAttribute('data-cat')) setCount(e.target, e.target.value);
+  });
+  $('edit-fields').addEventListener('change', function (e) {
+    if (!isFam()) return;
+    var m = /^fp-(from|to|custom)-(\d+)$/.exec(e.target.id);
+    if (!m) return;
+    var p = fam.state.periods[+m[2]];
+    if (m[1] === 'custom') {
+      p.custom = e.target.checked;
+      if (p.custom) p.counts = Object.assign(K.emptyCounts(), fam.state.base);
+      renderFamily();
+      return;
+    }
+    p[m[1]] = e.target.value;
+    $('fp-n-' + m[2]).textContent = nightsWord(K.nightsBetween(p.from, p.to));
+    famResult();
+  });
+
+  function famBusy(on) {
+    ['edit-save', 'edit-back', 'fam-cancel', 'fam-unlock'].forEach(function (id) { if ($(id)) $(id).disabled = on; });
+    if (!on) famResult();
+  }
+  function famFail(res) {
+    famBusy(false);
+    if (res && res.error === 'auth') return;
+    if (res && res.error === 'bad_request') return say($('edit-msg'), '');
+    say($('edit-msg'), ERRORS[res && res.error] || 'לא נשמר. נסו שוב.', 'bad');
+  }
+  function leaveFamily(note) {
+    writeJson(LIST_KEY + 'family', lists.family);
+    editing = null; fam = null;
+    if (history.state && history.state.edit) history.back();
+    openList('family', note);
+  }
+  function saveFamily() {
+    var id = editing.id, data = JSON.parse(JSON.stringify(fam.state));
+    famBusy(true); say($('edit-msg'), 'שומר…');
+    authed({ action: 'adminFamilyUpdate', user: id, data: data }).then(function (res) {
+      if (!res.ok) throw res;
+      var x = findListed('family', id);                 // shown at once; the background refresh brings the server's copy
+      if (x) { x.data = data; x.full = res.full; x.group = res.group; x.maxPeople = res.maxPeople; x.nights = res.nights; }
+      leaveFamily('ההרשמה של ' + (x ? x.family : id) + ' נשמרה.');
+    }).catch(famFail);
+  }
+  $('edit-extra').addEventListener('click', function (e) {
+    if (!isFam()) return;
+    var id = editing.id, x = findListed('family', id);
+    if (e.target.id === 'fam-cancel') {
+      if (!confirm('לבטל את ההרשמה של ' + x.family + '? היא תוסר מהרשימה, ובגיליון המארגנים תסומן "בוטל". המשפחה תוכל להירשם מחדש.')) return;
+      famBusy(true); say($('edit-msg'), 'מבטל…');
+      authed({ action: 'adminFamilyCancel', user: id }).then(function (res) {
+        if (!res.ok) throw res;                          // removed: false = a retry after a dropped reply, also done
+        lists.family.items = lists.family.items.filter(function (y) { return y.id !== id; });
+        leaveFamily('ההרשמה של ' + x.family + ' בוטלה.');
+      }).catch(famFail);
+    } else if (e.target.id === 'fam-unlock') {
+      famBusy(true); say($('edit-msg'), 'משחרר…');
+      authed({ action: 'adminFamilyUnlock', user: id }).then(function (res) {
+        if (!res.ok) throw res;
+        x.locked = false; x.status = 'registered';
+        writeJson(LIST_KEY + 'family', lists.family);
+        renderFamily();
+        famBusy(false);
+        say($('edit-msg'), 'הנעילה שוחררה: המשפחה יכולה להיכנס עם הקוד שלה.', 'good');
+      }).catch(famFail);
+    }
   });
 
   // ---------- start: a saved login shows the cached list at once ----------

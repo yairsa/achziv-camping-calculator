@@ -42,6 +42,19 @@ comments.push({ id: 1, tipId: 1, status: ST.pending, text: 'מסכים לגמר�
 gear.push({ id: 1, status: ST.approved, section: 'ביגוד', name: 'כובע', tags: '', note: '', submitted: '', approved: 'x', clientId: 's1' });
 gear.push({ id: 2, status: ST.pending, section: 'שונות', name: 'פטיש גומי', tags: '', note: '', submitted: at(30, 9), approved: '', clientId: 'g2' });
 
+// registrations (§4.4): an in-memory registration sheet, filled through the public save
+const regRows = [];
+const rs = { all: () => regRows, put: (r) => { if (!regRows.includes(r)) regRows.push(r); }, remove: (r) => regRows.splice(regRows.indexOf(r), 1),
+  hash: (u, p) => crypto.createHash('sha256').update('salt|' + u + '|' + p).digest('hex'), now: () => '01/10/2026 09:00', nowMs: () => Date.now() };
+const stay = (base, periods) => ({ base, periods: periods.map(p => Object.assign({ custom: false, counts: {} }, p)) });
+ctx.route({ action: 'save', user: 'משפחת כהן', pin: '1234', nights: {}, maxPeople: 3, full: 420, group: 1,
+  data: stay({ adult: 2, child: 1 }, [{ from: '2026-10-06', to: '2026-10-08' }]) }, rs);
+ctx.route({ action: 'save', user: 'Levi', pin: '5555', nights: {}, maxPeople: 2, full: 304, group: 260,
+  data: stay({ adult: 2 }, [{ from: '2026-10-07', to: '2026-10-09' }]) }, rs);
+for (let i = 0; i < 5; i++) ctx.route({ action: 'load', user: 'Levi', pin: '0000' }, rs);
+const codeHashes = regRows.map(r => r.pinHash);
+const sent = [];
+
 let oldBackend = false, dropNext = 0, delay = 0;
 const calls = [];
 
@@ -55,7 +68,8 @@ const calls = [];
     const body = JSON.parse(route.request().postData());
     calls.push(body.action);
     if (delay) await new Promise(r => setTimeout(r, delay));
-    const res = oldBackend ? { ok: false, error: 'bad_request' } : P(ctx.route(body, null, ts, as, adm));
+    const res = oldBackend ? { ok: false, error: 'bad_request' } : P(ctx.route(body, rs, ts, as, adm));
+    sent.push(JSON.stringify(res));
     if (dropNext > 0) { dropNext--; return route.fulfill({ status: 404, contentType: 'text/html', body: '<html>not found</html>' }); }
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(res) });
   });
@@ -279,6 +293,70 @@ const calls = [];
     assert.strictEqual(await pub.innerHTML('#tour-text'), '<p>פסקה אחת</p><p><strong>מודגש</strong> כאן</p>');
     await pc.close();
   }
+
+  // ---- §4.4 registrations: the families tab, a locked family marked ----
+  const fam = (name) => '#list-items .adm-card:has-text("' + name + '")';
+  const result = () => text('#fam-result');
+  await page.click('#adm-nav [data-view="family"]');
+  await page.waitForSelector('#adm-list:not([hidden]) ' + fam('Levi'));
+  assert.strictEqual(await text('#list-title'), 'הרשמות');
+  assert.deepStrictEqual(await rows(), ['Levi', 'משפחת כהן']);
+  assert.ok((await text(fam('Levi'))).includes('נעולה'));
+  assert.ok((await text(fam('משפחת כהן'))).includes('06/10 עד 08/10 · 3 לנים'));
+  await noHScroll('family list');
+
+  // ---- a family's stay through the calculator's pieces: headcount, dates, a warning, a second period ----
+  await page.click(fam('משפחת כהן'));
+  assert.strictEqual(await text('.adm-fam'), 'משפחת כהן');
+  assert.ok(await page.isHidden('#fam-unlock'));
+  assert.ok((await result()).includes('420'));                                    // 2 nights × (2×76 + 58)
+  await page.click('.counter:has(#fc-b-child) [data-d="1"]');
+  assert.strictEqual(await page.inputValue('#fc-b-child'), '2');
+  assert.ok((await result()).includes('536'));
+  await page.selectOption('#fp-to-0', '2026-10-09');
+  assert.strictEqual(await text('#fp-n-0'), '3 לילות');
+  assert.ok((await result()).includes('804'));
+  await page.selectOption('#fp-to-0', '2026-10-14');                             // 8 nights: the calculator's warning
+  assert.ok((await result()).includes('6 לילות'));
+  assert.ok(await page.isDisabled('#edit-save'));
+  await page.selectOption('#fp-to-0', '2026-10-09');
+  assert.ok(await page.isEnabled('#edit-save'));
+  await page.click('#fam-add');
+  assert.strictEqual(await page.inputValue('#fp-from-1'), '2026-10-09');
+  await page.check('#fp-custom-1');
+  assert.strictEqual(await page.inputValue('#fc-p1-child'), '2');                  // starts from the family's composition
+  await page.fill('#fc-p1-adult', '1'); await page.fill('#fc-p1-child', '0');
+  assert.ok((await result()).includes('880'));                                    // 804 + one adult, one night
+  await noHScroll('family edit');
+  await page.click('#edit-save');
+  await page.waitForFunction(() => /ההרשמה של משפחת כהן נשמרה/.test(document.getElementById('list-msg').textContent));
+  const cohen = regRows.find(r => r.user === 'משפחת כהן');
+  assert.deepStrictEqual([cohen.full, cohen.group, cohen.maxPeople], [880, 3 * (130 + 98) + 65, 4]);
+  assert.deepStrictEqual(P(cohen.nights), { '2026-10-06': 4, '2026-10-07': 4, '2026-10-08': 4, '2026-10-09': 1 });
+  assert.strictEqual(cohen.pinHash, codeHashes[0]);
+  assert.ok(P(ctx.route({ action: 'load', user: 'משפחת כהן', pin: '1234' }, rs)).ok, 'the family code no longer opens it');
+  assert.ok((await text(fam('משפחת כהן'))).includes('880'));
+  assert.ok(logged.some(l => l[2] === 'family' && l[3] === 'משפחת כהן' && l[4] === 'full'));
+
+  // ---- unlock a family locked by wrong codes ----
+  await page.click(fam('Levi'));
+  assert.ok(await page.isVisible('#fam-locked'));
+  await page.click('#fam-unlock');
+  await page.waitForFunction(() => /הנעילה שוחררה/.test(document.getElementById('edit-msg').textContent));
+  assert.ok(await page.isHidden('#fam-unlock'));
+  assert.ok(P(ctx.route({ action: 'load', user: 'Levi', pin: '5555' }, rs)).ok, 'still locked');
+
+  // ---- cancel it; the reply is dropped once, and the retry (already gone) still counts as done ----
+  page.once('dialog', d => d.accept());
+  dropNext = 1; delay = 1500;                          // slow too: the list drops it before the refresh comes back
+  await page.click('#fam-cancel');
+  await page.waitForFunction(() => /ההרשמה של Levi בוטלה/.test(document.getElementById('list-msg').textContent));
+  assert.deepStrictEqual(regRows.map(r => r.user), ['משפחת כהן']);
+  assert.deepStrictEqual(await rows(), ['משפחת כהן']);
+  delay = 0;
+  await page.waitForFunction(() => !document.getElementById('list-refresh').disabled);
+  assert.deepStrictEqual(await rows(), ['משפחת כהן']);
+  codeHashes.forEach(h => assert.ok(!sent.some(s => s.includes(h)), 'a code hash reached the page'));
 
   // ---- logout leaves nothing behind ----
   await page.click('#adm-logout');

@@ -2,7 +2,7 @@
 
 > **Open questions for Yair:** none. The decisions in §2 are derived; say if one is wrong.
 
-**Status:** §4.1, §4.2 and §4.3 done 01/10/2026 (pushed, backend not deployed). Next: the first unticked box in §4.4.
+**Status:** §4.1-§4.4 done 01/10/2026 (pushed, backend not deployed). Next: the first unticked box in §4.5 (go-live).
 
 ## 1. The brief (Yair, 01/10/2026)
 
@@ -70,10 +70,13 @@
   - logged per field as kind `family`, id = the family's name; `data` old/new is the whole stay, so it can be typed back. Retry = `saved: false`, nothing logged. Cancel removes the row like the family's own delete, logs one `registration` row holding the stay (never the code), and answers `removed: false` when already gone. Unlock zeroes the wrong-code count (logged `fails`); the code is untouched. No reply carries `pinHash` or the fail count; `locked` is computed
   - `FAMILY_WRITES` re-sync the organizers' sheet in `doPost` (and clear no public cache); `adminFamilies` is in `ADMIN_READS`
   - 7 mutations (warnings check, client price kept, non-custom counts kept, unlock not reset, cancel not removing, cancel retry failing, hash in the list) all turned the tests red
-- [ ] `admin.html`: the families tab; a family's screen reusing the calculator form (dates, headcount, discounts) and its price
-- [ ] Tests: backend (update keeps the code, cancel, unlock; codes never in any reply) + e2e
-  - backend half done (`admin registration tests` in `tests/backend.test.js`); e2e with the page
-- [ ] Gate: all gates green
+- [x] `admin.html`: the families tab; a family's screen reusing the calculator form (dates, headcount, discounts) and its price
+  - done: nav tab הרשמות (`family`), list by name with the stay, people and full price; a locked family carries the status chip נעולה. The family screen is built in `admin.js` from `calc.js` and the calculator's own CSS classes (`.counter`, `.period`, `.totals`): composition with discounts and extras, periods with dates, "הרכב שונה" (copies the composition, as the calculator does), add / delete a period; live warnings and totals beside what the sheet holds now; save is disabled while the calculator warns. Below: שחרור הנעילה (only when locked) and ביטול ההרשמה (a confirm). No code anywhere on the page
+  - not the public form's code itself: `app.js`'s form is wired to index.html's ids and its localStorage, so the admin screen rebuilds the same pieces from `calc.js` instead (same categories, labels, prices, warnings)
+  - `itemDomId` now hex-encodes non-ASCII (two Hebrew names had produced the same DOM id)
+- [x] Tests: backend (update keeps the code, cancel, unlock; codes never in any reply) + e2e
+  - backend: `admin registration tests` in `tests/backend.test.js`. e2e (`tests/admin.e2e.js`): list + locked chip, headcount and dates through the calculator, a >6-night warning disabling save, a second period with its own composition, saved prices = calc.js's, the family's code still opens it, unlock, cancel with a dropped reply, no code hash in any reply. 6 mutations to `admin.js` (save not disabled, custom not copied, cancel not dropping the card, unlock not updating, counters always on the base, locked not marked) all turned it red
+- [x] Gate: all gates green
 
 #### 4.5 Go-live
 - [ ] Push; live check of the page (login screen, "server not updated yet" with the old script)
@@ -84,6 +87,7 @@
 - 01/10/2026 — planned (this file). The 30/09 payments plan superseded.
 - 01/10/2026 — §4.1 (login) and §4.2 (waiting list + review page) built and pushed. Backend not deployed yet (§4.5).
 - 01/10/2026 — §4.3 (edit anything current: tips, comments, gear, activities, tour texts) built and pushed.
+- 01/10/2026 — §4.4 (registrations: list, edit the stay priced by calc.js, cancel, unlock) built and pushed.
 
 ## 6. ~~The 30/09/2026 plan~~ — superseded 01/10/2026 (payments are out; see §1)
 
