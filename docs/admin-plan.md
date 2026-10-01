@@ -42,8 +42,10 @@
   - 4 mutations (version check, expiry, lockout, unknown-name answer) all turned the tests red
 
 #### 4.2 Waiting list and review
-- [ ] Action `adminQueue` → pending tips (with the "דומה ל…" hint), comments (with their tip's title), gear items; counts
-- [ ] Action `adminDecide {kind, id, fields, status, mergedInto?}`: validates fields with the same limits as submissions, writes fields + status in one update, stamps אושר, appends to יומן ניהול, clears the public cache; repeatable
+- [x] Action `adminQueue` → pending tips (with the "דומה ל…" hint), comments (with their tip's title), gear items; counts
+- [x] Action `adminDecide {kind, id, fields, status, mergedInto?}`: validates fields with the same limits as submissions, writes fields + status in one update, stamps אושר, appends to יומן ניהול, clears the public cache; repeatable
+  - done: `kind` is `tip` / `comment` / `gear`; `status` is a key (`approved` · `rejected` · `merged` for tips only), never the Hebrew value. Only the fields sent change. A retry changes nothing and logs nothing. The log gets one row per changed field (`adm.log`, tab יומן ניהול, created on first write). A merge runs `housekeep_`, so the merge comment is made once. `doPost` clears all four public caches after any successful admin write (everything except login, me, queue). Gear limits: tags 100, note 200. The queue also returns `categories`, `sections` and `mergeTargets` (approved tips), so the page needs no second call
+  - gotcha: `instanceof Date` is false for a Date made outside the vm, so the tests could not see dates. `isDate_` checks for `getTime` instead
 - [ ] `admin.html` + `admin.js`: login screen, the waiting list (cards, counts), one item's review screen, logout; cached copy at once
 - [ ] Tests: backend (each kind, each decision, a merge, bad fields, no token) + `tests/admin.e2e.js` at 360px (backend in vm, mocked URL): login, review a tip with an edited category, approve → gone from the list and public, reject a comment, approve a gear item, a dropped reply retried
 - [ ] Gate: all gates green; stamp

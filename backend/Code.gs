@@ -53,7 +53,11 @@ function doPost(e) {
       return ContentService.createTextOutput(out).setMimeType(ContentService.MimeType.JSON);
     }
     if (req && /^admin/.test(req.action)) {
-      return json_(route(req, sheetStore_(), tipsStore_(), activitiesStore_(), adminStore_()));
+      var ares = route(req, sheetStore_(), tipsStore_(), activitiesStore_(), adminStore_());
+      if (ares.ok && req.action !== 'adminLogin' && req.action !== 'adminMe' && req.action !== 'adminQueue') {
+        CacheService.getScriptCache().removeAll([TIPS_CACHE, GEAR_CACHE, ACTS_CACHE, TOUR_CACHE]);   // the site shows it at once
+      }
+      return json_(ares);
     }
     var tipAction = req && (req.action === 'submitTip' || req.action === 'submitComment' || req.action === 'submitGear');
     var actAction = !!(req && ACT_WRITES[req.action]);
@@ -90,6 +94,8 @@ function route(req, store, tstore, astore, adm) {
       case 'leave': return leave_(req, store, astore);
       case 'adminLogin': return adminLogin_(req, adm);
       case 'adminMe': return adminMe_(req, adm);
+      case 'adminQueue': return adminQueue_(req, tstore, adm);
+      case 'adminDecide': return adminDecide_(req, tstore, adm);
       default: return { ok: false, error: 'bad_request' };
     }
   } catch (x) {
@@ -1238,6 +1244,103 @@ function adminAuth_(req, adm) {
 }
 function adminMe_(req, adm) { return { ok: true, name: adminAuth_(req, adm).name }; }
 
+// ---------- managing page: the waiting list and one item's decision (docs/admin-plan.md \u00a74.2) ----------
+// Tips, comments and suggested gear items waiting for approval. Activities need no approval (activities-plan \u00a72).
+var ADMIN_KINDS = { tip: 1, comment: 1, gear: 1 };
+var ADMIN_DECISIONS = { tip: ['approved', 'rejected', 'merged'], comment: ['approved', 'rejected'], gear: ['approved', 'rejected'] };
+var GEAR_LIMITS = { tags: 100, note: 200 };
+var ADMIN_LOG_TAB = '\u05d9\u05d5\u05de\u05df \u05e0\u05d9\u05d4\u05d5\u05dc';
+var ADMIN_LOG_HEAD = ['\u05de\u05ea\u05d9', '\u05de\u05d0\u05e8\u05d2\u05df', '\u05e1\u05d5\u05d2', '\u05de\u05e1\u05e4\u05e8', '\u05e9\u05d3\u05d4', '\u05e2\u05e8\u05da \u05e7\u05d5\u05d3\u05dd', '\u05e2\u05e8\u05da \u05d7\u05d3\u05e9'];
+
+function isDate_(v) { return !!v && typeof v.getTime === 'function' && !isNaN(v.getTime()); }
+function when_(v) { return isDate_(v) ? v.getTime() : 0; }
+function whenText_(v) { return isDate_(v) ? v.toISOString() : String(v == null ? '' : v); }
+function adminRows_(ts, kind) { return kind === 'tip' ? ts.tips() : kind === 'comment' ? ts.comments() : gearRows_(ts); }
+
+function adminQueue_(req, ts, adm) {
+  adminAuth_(req, adm);
+  var pend = function (r) { return r.status === ST.pending; }, newest = function (a, b) { return b.id - a.id; };
+  var titles = {};
+  ts.tips().forEach(function (t) { titles[+t.id] = unguard_(t.title); });
+  var tips = ts.tips().filter(pend).map(function (t) {
+    return { id: +t.id, category: String(t.category), title: unguard_(t.title), text: unguard_(t.text),
+             author: unguard_(t.author), similar: unguard_(t.similar), submitted: whenText_(t.submitted), ms: when_(t.submitted) };
+  }).sort(newest);
+  var comments = ts.comments().filter(pend).map(function (c) {
+    var k = tipNumber_(c.tipId);
+    return { id: +c.id, tipId: k, tipTitle: titles[k] || '', text: unguard_(c.text), author: unguard_(c.author),
+             submitted: whenText_(c.submitted), ms: when_(c.submitted) };
+  }).sort(newest);
+  var gear = gearRows_(ts).filter(pend).map(function (g) {
+    return { id: +g.id, section: String(g.section), name: unguard_(g.name), tags: String(g.tags || ''), note: unguard_(g.note),
+             submitted: whenText_(g.submitted), ms: when_(g.submitted) };
+  }).sort(newest);
+  var targets = ts.tips().filter(function (t) { return t.status === ST.approved; })
+    .map(function (t) { return { id: +t.id, title: unguard_(t.title) }; }).sort(newest);
+  return { ok: true, tips: tips, comments: comments, gear: gear,
+           counts: { tip: tips.length, comment: comments.length, gear: gear.length },
+           categories: TIP_CATEGORIES, sections: GEAR_SECTIONS_, mergeTargets: targets };
+}
+
+// The organizer's edits and decision, in one write. Only the fields sent change; each is checked like a submission.
+// Sets values (never toggles), so a retry after a dropped reply changes nothing and logs nothing.
+function adminFields_(kind, f) {
+  f = f || {};
+  var out = {};
+  function has(k) { return Object.prototype.hasOwnProperty.call(f, k) && f[k] != null; }
+  if (kind === 'tip') {
+    if (has('category')) { if (TIP_CATEGORIES.indexOf(f.category) < 0) fail_('bad_category'); out.category = f.category; }
+    if (has('title')) out.title = tipText_(f.title, 3, TIP_LIMITS.title);
+    if (has('text')) out.text = tipText_(f.text, 5, TIP_LIMITS.text);
+    if (has('author')) out.author = tipText_(f.author, 0, TIP_LIMITS.author);
+  } else if (kind === 'comment') {
+    if (has('text')) out.text = tipText_(f.text, 2, TIP_LIMITS.comment);
+    if (has('author')) out.author = tipText_(f.author, 0, TIP_LIMITS.author);
+  } else {
+    if (has('section')) { if (GEAR_SECTIONS_.indexOf(f.section) < 0) fail_('bad_category'); out.section = f.section; }
+    if (has('name')) out.name = tipText_(String(f.name).replace(/\n/g, ' '), 2, GEAR_NAME_MAX);
+    if (has('tags')) {
+      out.tags = String(f.tags).split(/[,\u060c]/).map(function (t) { return t.trim(); }).filter(Boolean).join(', ');
+      out.tags = tipText_(out.tags, 0, GEAR_LIMITS.tags);
+    }
+    if (has('note')) out.note = tipText_(String(f.note).replace(/\n/g, ' '), 0, GEAR_LIMITS.note);
+  }
+  return out;
+}
+
+function adminDecide_(req, ts, adm) {
+  var who = adminAuth_(req, adm), kind = req.kind;
+  if (!ADMIN_KINDS[kind]) fail_('bad_request');
+  if ((ADMIN_DECISIONS[kind] || []).indexOf(req.status) < 0) fail_('bad_status');
+  var id = tipNumber_(req.id), row = adminRows_(ts, kind).filter(function (r) { return +r.id === id; })[0];
+  if (!row) fail_('not_found');
+  var next = adminFields_(kind, req.fields);
+  next.status = ST[req.status];
+  if (kind === 'tip') {
+    var target = req.status === 'merged' ? tipNumber_(req.mergedInto) : 0;
+    if (req.status === 'merged' && (target === id ||
+        !ts.tips().some(function (t) { return +t.id === target && t.status === ST.approved; }))) fail_('bad_merge');
+    next.mergedInto = target || '';
+  }
+  if (req.status === 'approved' && !row.approved) next.approved = ts.now();
+  var log = [], now = ts.now();
+  Object.keys(next).forEach(function (k) {
+    var old = row[k] == null ? '' : row[k];
+    if (String(old) === String(next[k])) return;
+    if (k !== 'approved') log.push([now, who.name, kind, id, k, logCell_(old), logCell_(next[k])]);
+    row[k] = next[k];
+  });
+  if (!log.length && !next.approved) return { ok: true, id: id, status: row.status };
+  (kind === 'tip' ? ts.updateTip : kind === 'comment' ? ts.updateComment : ts.updateGear)(row);
+  if (log.length && adm.log) adm.log(log);
+  if (kind === 'tip' && req.status === 'merged') housekeep_(ts);     // the merge becomes a comment on the target, once
+  return { ok: true, id: id, status: row.status };
+}
+function logCell_(v) {
+  v = isDate_(v) ? v : String(v == null ? '' : v);
+  return typeof v === 'string' && /^[=+\-@]/.test(v) ? "'" + v : v;
+}
+
 // ---------- Google Sheet store ----------
 function sheetStore_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -1458,6 +1561,18 @@ function adminStore_() {
       var k = props.getProperty('ADMIN_KEY');
       if (!k) { k = U.getUuid() + U.getUuid(); props.setProperty('ADMIN_KEY', k); }
       return hex(U.computeHmacSha256Signature(body, k, U.Charset.UTF_8));
+    },
+    // Tab \u05d9\u05d5\u05de\u05df \u05e0\u05d9\u05d4\u05d5\u05dc: one row per changed field, so any change can be put back by hand.
+    log: function (rows) {
+      var ss = SpreadsheetApp.getActiveSpreadsheet(), sh = ss.getSheetByName(ADMIN_LOG_TAB);
+      if (!sh) {
+        sh = ss.insertSheet(ADMIN_LOG_TAB);
+        sh.appendRow(ADMIN_LOG_HEAD);
+        sh.getRange(1, 1, 1, ADMIN_LOG_HEAD.length).setFontWeight('bold');
+        sh.setFrozenRows(1);
+        sh.setRightToLeft(true);
+      }
+      sh.getRange(sh.getLastRow() + 1, 1, rows.length, ADMIN_LOG_HEAD.length).setValues(rows);
     },
     nowMs: function () { return Date.now(); }
   };

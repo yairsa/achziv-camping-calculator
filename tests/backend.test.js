@@ -609,3 +609,111 @@ console.log('tour text tests passed');
   assert.ok(ctx.sameText_('abc', 'abc') && !ctx.sameText_('abc', 'abd') && !ctx.sameText_('abc', 'ab'));
 }
 console.log('admin login tests passed');
+
+// ---------- managing page: the waiting list and one item's decision (admin-plan §4.2) ----------
+{
+  const ST = ctx.ST;
+  const logged = [];
+  let orgs = {};
+  const adm = {
+    orgs: () => orgs, saveOrgs: (o) => { orgs = o; }, salt: () => 's',
+    hash: (salt, pw) => crypto.createHash('sha256').update(salt + '|' + pw).digest('hex'),
+    sign: (body) => crypto.createHmac('sha256', 'k').update(body).digest('hex'), nowMs: () => 3e12,
+    log: (rows) => logged.push(...P(rows))
+  };
+  const tips = [], comments = [], gear = [], writes = [];
+  const ts = {
+    tips: () => tips, comments: () => comments, gear: () => gear,
+    addTip: (r) => tips.push(r), addComment: (r) => comments.push(r), addGear: (r) => gear.push(r),
+    updateTip: (r) => writes.push(['tip', r.id]), updateComment: (r) => writes.push(['comment', r.id]),
+    updateGear: (r) => writes.push(['gear', r.id]), now: () => new Date(Date.UTC(2026, 9, 1, 9, 0))
+  };
+  const at = (h) => new Date(Date.UTC(2026, 8, 30, h));
+  const tip = (id, status, title, extra) => tips.push(Object.assign({ id, status, category: 'ציוד', title, text: 'טקסט של ' + title,
+    author: '', submitted: at(id), approved: status === ST.approved ? 'x' : '', mergedInto: '', similar: '', clientId: 'c' + id }, extra));
+  tip(1, ST.approved, 'יתדות ארוכות');
+  tip(2, ST.pending, 'יתדות לחול', { similar: '1: יתדות ארוכות', author: 'רונית' });
+  tip(3, ST.pending, 'כובע לילדים');
+  tip(4, ST.rejected, 'ספאם');
+  tip(5, ST.pending, "'=HYPERLINK(1)");
+  comments.push({ id: 1, tipId: 1, status: ST.pending, text: 'מסכים', author: '', submitted: at(7), approved: '', clientId: 'k1' });
+  comments.push({ id: 2, tipId: 1, status: ST.approved, text: 'ישן', author: '', submitted: at(1), approved: 'x', clientId: 'k2' });
+  gear.push({ id: 1, status: ST.approved, section: 'ביגוד', name: 'כובע', tags: '', note: '', submitted: '', approved: 'x', clientId: 's1' });
+  gear.push({ id: 2, status: ST.pending, section: 'שונות', name: 'פטיש לחול', tags: '', note: '', submitted: at(9), approved: '', clientId: 'g2' });
+  ctx.setAdminPassword_(adm, 'יאיר', 'password-1');
+  const tok = ctx.adminLogin_({ name: 'יאיר', password: 'password-1' }, adm).token;
+  const A = (req) => P(ctx.route(Object.assign({ token: tok }, req), null, ts, null, adm));
+
+  // no token, a bad token: nothing is read or written
+  assert.strictEqual(P(ctx.route({ action: 'adminQueue' }, null, ts, null, adm)).error, 'auth');
+  assert.strictEqual(A({ action: 'adminDecide', token: 'x.1.2.3', kind: 'tip', id: 2, status: 'approved' }).error, 'auth');
+  assert.strictEqual(writes.length, 0);
+
+  // the queue: pending only, newest first, the similar hint, a comment's tip title, counts, merge targets
+  let q = A({ action: 'adminQueue' });
+  assert.ok(q.ok);
+  assert.deepStrictEqual(q.tips.map(t => t.id), [5, 3, 2]);
+  assert.strictEqual(q.tips[0].title, '=HYPERLINK(1)');                                 // shown without the guard
+  assert.strictEqual(q.tips[2].similar, '1: יתדות ארוכות'); assert.strictEqual(q.tips[2].author, 'רונית');
+  assert.strictEqual(q.tips[2].ms, at(2).getTime());
+  assert.deepStrictEqual(q.comments.map(c => [c.id, c.tipTitle]), [[1, 'יתדות ארוכות']]);
+  assert.deepStrictEqual(q.gear.map(g => g.name), ['פטיש לחול']);
+  assert.deepStrictEqual(q.counts, { tip: 3, comment: 1, gear: 1 });
+  assert.deepStrictEqual(q.mergeTargets, [{ id: 1, title: 'יתדות ארוכות' }]);
+  assert.ok(q.categories.includes('ילדים') && q.sections.includes('ביגוד'));
+  assert.ok(!JSON.stringify(q).includes('clientId') && !JSON.stringify(q).includes('"c2"'), 'client ids leaked');
+
+  // approve a tip with an edited category and title: one write, stamped, each change logged with its old value
+  let r = A({ action: 'adminDecide', kind: 'tip', id: 3, status: 'approved', fields: { category: 'ילדים', title: 'כובע רחב לילדים' } });
+  assert.deepStrictEqual(r, { ok: true, id: 3, status: ST.approved });
+  assert.deepStrictEqual(writes, [['tip', 3]]);
+  assert.strictEqual(tips[2].category, 'ילדים'); assert.ok(tips[2].approved instanceof Date);
+  assert.deepStrictEqual(logged.map(l => l.slice(1)), [
+    ['יאיר', 'tip', 3, 'category', 'ציוד', 'ילדים'],
+    ['יאיר', 'tip', 3, 'title', 'כובע לילדים', 'כובע רחב לילדים'],
+    ['יאיר', 'tip', 3, 'status', ST.pending, ST.approved]]);
+  assert.ok(ctx.tipsPublic_(ts).tips.some(t => t.title === 'כובע רחב לילדים'), 'approved but not public');
+  // the same request again (a dropped reply): nothing written, nothing logged
+  r = A({ action: 'adminDecide', kind: 'tip', id: 3, status: 'approved', fields: { category: 'ילדים', title: 'כובע רחב לילדים' } });
+  assert.ok(r.ok); assert.strictEqual(writes.length, 1); assert.strictEqual(logged.length, 3);
+
+  // bad fields: the same limits as a submission, and nothing changes
+  const bad = (req, code) => assert.strictEqual(A(Object.assign({ action: 'adminDecide' }, req)).error, code, JSON.stringify(req));
+  bad({ kind: 'tip', id: 2, status: 'approved', fields: { category: 'לא קיים' } }, 'bad_category');
+  bad({ kind: 'tip', id: 2, status: 'approved', fields: { title: 'x' } }, 'too_short');
+  bad({ kind: 'tip', id: 2, status: 'approved', fields: { text: 'y'.repeat(401) } }, 'too_long');
+  bad({ kind: 'comment', id: 1, status: 'merged' }, 'bad_status');
+  bad({ kind: 'tip', id: 2, status: 'hidden' }, 'bad_status');
+  bad({ kind: 'nope', id: 2, status: 'approved' }, 'bad_request');
+  bad({ kind: 'tip', id: 99, status: 'approved' }, 'not_found');
+  bad({ kind: 'tip', id: 2, status: 'merged', mergedInto: 2 }, 'bad_merge');           // into itself
+  bad({ kind: 'tip', id: 2, status: 'merged', mergedInto: 4 }, 'bad_merge');           // into a rejected tip
+  bad({ kind: 'gear', id: 2, status: 'approved', fields: { section: 'אין כזה' } }, 'bad_category');
+  assert.strictEqual(writes.length, 1); assert.strictEqual(tips[1].status, ST.pending);
+
+  // merge: the tip becomes a comment on its target, once, even when retried
+  r = A({ action: 'adminDecide', kind: 'tip', id: 2, status: 'merged', mergedInto: 1 });
+  assert.ok(r.ok); assert.strictEqual(tips[1].status, ST.merged); assert.strictEqual(tips[1].mergedInto, 1);
+  A({ action: 'adminDecide', kind: 'tip', id: 2, status: 'merged', mergedInto: 1 });
+  assert.strictEqual(comments.filter(c => c.clientId === 'merge-2').length, 1);
+  assert.ok(ctx.tipsPublic_(ts).tips.find(t => t.id === 1).comments.some(c => c.text.startsWith('יתדות לחול: ')));
+
+  // reject a comment with an edit; a formula typed by the organizer is guarded in the sheet and the log
+  r = A({ action: 'adminDecide', kind: 'comment', id: 1, status: 'rejected', fields: { text: '=cmd' } });
+  assert.ok(r.ok); assert.strictEqual(comments[0].status, ST.rejected); assert.strictEqual(comments[0].text, "'=cmd");
+  assert.strictEqual(comments[0].approved, '', 'a rejection is not stamped as approved');
+  assert.deepStrictEqual(logged.find(l => l[2] === 'comment' && l[4] === 'text').slice(5), ['מסכים', "'=cmd"]);
+
+  // approve a gear item with a new section, tags and note: on everyone's list
+  r = A({ action: 'adminDecide', kind: 'gear', id: 2, status: 'approved',
+          fields: { section: 'אוהלים ולינה', tags: ' חול ,חוף,, ', note: 'לקרקע קשה' } });
+  assert.ok(r.ok);
+  assert.deepStrictEqual(P(ctx.gearPublic_(ts).items.find(g => g.id === 2)),
+    { id: 2, section: 'אוהלים ולינה', name: 'פטיש לחול', tags: ['חול', 'חוף'], note: 'לקרקע קשה' });
+
+  // the queue now holds only what is still waiting
+  q = A({ action: 'adminQueue' });
+  assert.deepStrictEqual(q.counts, { tip: 1, comment: 0, gear: 0 });
+  assert.deepStrictEqual(q.mergeTargets.map(t => t.id), [3, 1]);
+}
+console.log('admin queue tests passed');
