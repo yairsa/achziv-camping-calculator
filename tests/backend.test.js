@@ -838,3 +838,108 @@ console.log('admin queue tests passed');
   bad({ kind: 'tour', id: 'welcome/help', fields: { text: 'y'.repeat(2001) } }, 'too_long');
 }
 console.log('admin edit tests passed');
+
+// ---------- managing page: registrations (admin-plan §4.4) ----------
+{
+  const logged = [];
+  let orgs = {}, now = 4e12;
+  const adm = {
+    orgs: () => orgs, saveOrgs: (o) => { orgs = o; }, salt: () => 's',
+    hash: (salt, pw) => crypto.createHash('sha256').update(salt + '|' + pw).digest('hex'),
+    sign: (body) => crypto.createHmac('sha256', 'k').update(body).digest('hex'), nowMs: () => now,
+    log: (rows) => logged.push(...P(rows))
+  };
+  const fs2 = memStore(), replies = [];
+  fs2.nowMs = () => now;
+  const pub = (req) => P(ctx.route(req, fs2));
+  const stay = (base, periods) => ({ base, periods: periods.map(p => Object.assign({ custom: false, counts: {} }, p)) });
+  pub({ action: 'save', user: 'Cohen', pin: '1234', nights: { '2026-10-06': 3 }, maxPeople: 3, full: 999, group: 999,
+        data: stay({ adult: 2, child: 1 }, [{ from: '2026-10-06', to: '2026-10-07' }]) });
+  pub({ action: 'save', user: 'משפחת לוי', pin: '5555', nights: { '2026-10-07': 2 }, maxPeople: 2, full: 304, group: 260,
+        data: stay({ adult: 2 }, [{ from: '2026-10-07', to: '2026-10-09' }]) });
+  for (let i = 0; i < 5; i++) pub({ action: 'load', user: 'משפחת לוי', pin: '0000' });
+  assert.strictEqual(pub({ action: 'load', user: 'משפחת לוי', pin: '5555' }).error, 'locked');
+  const hashes = fs2.rows.map(r => r.pinHash);
+
+  ctx.setAdminPassword_(adm, 'יאיר', 'password-1');
+  const tok = ctx.adminLogin_({ name: 'יאיר', password: 'password-1' }, adm).token;
+  const A = (req) => { const r = P(ctx.route(Object.assign({ token: tok }, req), fs2, null, null, adm)); replies.push(r); return r; };
+  const bad = (req, code) => assert.strictEqual(A(Object.assign({ action: 'adminFamilyUpdate', user: 'cohen' }, req)).error, code, JSON.stringify(req));
+
+  // no token: nothing read, nothing changed
+  ['adminFamilies', 'adminFamilyUpdate', 'adminFamilyCancel', 'adminFamilyUnlock'].forEach(action =>
+    assert.strictEqual(P(ctx.route({ action, user: 'cohen' }, fs2, null, null, adm)).error, 'auth', action));
+  assert.strictEqual(fs2.rows.length, 2);
+
+  // the list: by name, the stay without internals, the lock
+  let l = A({ action: 'adminFamilies' });
+  assert.deepStrictEqual(l.items.map(f => [f.user, f.family, f.locked]), [['cohen', 'Cohen', false], ['משפחת לוי', 'משפחת לוי', true]]);
+  assert.deepStrictEqual(l.items[0].nights, { '2026-10-06': 3 });
+  assert.strictEqual(l.items[0].updated, '30/09/2026 12:00');
+  assert.strictEqual(l.items[0].data.periods[0].from, '2026-10-06'); assert.ok(!('__nights' in l.items[0].data));
+
+  // new dates and headcount: priced by calc.js (whatever price the family's browser sent before), code and name kept
+  const next = stay({ adult: 2, child: 2, toddler: 1 }, [{ from: '2026-10-06', to: '2026-10-09' }]);
+  let r = A({ action: 'adminFamilyUpdate', user: 'COHEN ', data: next, full: 1, group: 1, maxPeople: 99 });
+  assert.ok(r.ok && r.saved);
+  assert.deepStrictEqual([r.full, r.group, r.maxPeople], [3 * (152 + 116), 3 * (130 + 98), 5]);
+  assert.deepStrictEqual(r.nights, { '2026-10-06': 5, '2026-10-07': 5, '2026-10-08': 5 });
+  const cohen = fs2.rows.find(x => x.user === 'cohen');
+  assert.strictEqual(cohen.pinHash, hashes[0]); assert.strictEqual(cohen.family, 'Cohen');
+  let ld = pub({ action: 'load', user: 'Cohen', pin: '1234' });                 // the family's own code still opens it
+  assert.ok(ld.ok); assert.strictEqual(ld.data.periods[0].to, '2026-10-09'); assert.strictEqual(ld.data.base.child, 2);
+  assert.strictEqual(pub({ action: 'summary' }).nights['2026-10-08'], 5);
+  assert.deepStrictEqual(logged.map(x => [x[1], x[2], x[3], x[4]]),
+    [['יאיר', 'family', 'Cohen', 'data'], ['יאיר', 'family', 'Cohen', 'maxPeople'], ['יאיר', 'family', 'Cohen', 'full'], ['יאיר', 'family', 'Cohen', 'group']]);
+  assert.strictEqual(JSON.parse(logged[0][5]).periods[0].to, '2026-10-07');     // the old stay can be typed back
+  assert.deepStrictEqual([logged[2][5], logged[2][6]], ['999', '804']);
+  // a retry (dropped reply) changes and logs nothing
+  r = A({ action: 'adminFamilyUpdate', user: 'cohen', data: next });
+  assert.ok(r.ok && !r.saved); assert.strictEqual(logged.length, 4);
+
+  // the calculator's own warnings refuse a stay; nothing is written
+  bad({ data: stay({ adult: 2 }, [{ from: '2026-10-06', to: '2026-10-08' }, { from: '2026-10-07', to: '2026-10-09' }]) }, 'bad_stay');  // overlap
+  bad({ data: stay({ adult: 2 }, [{ from: '2026-10-06', to: '2026-10-13' }]) }, 'bad_stay');            // 7 nights in a row
+  bad({ data: stay({ adult: 2 }, [{ from: '2026-10-08', to: '2026-10-08' }]) }, 'bad_stay');            // no night
+  bad({ data: stay({}, [{ from: '2026-10-06', to: '2026-10-08' }]) }, 'bad_stay');                       // nobody
+  bad({ data: stay({ adult: 1.5 }, [{ from: '2026-10-06', to: '2026-10-08' }]) }, 'bad_stay');
+  bad({ data: stay({ adult: 100 }, [{ from: '2026-10-06', to: '2026-10-08' }]) }, 'bad_stay');
+  bad({ data: stay({ adult: 2 }, [{ from: '2026-02-30', to: '2026-03-02' }]) }, 'bad_stay');
+  bad({ data: stay({ adult: 2 }, []) }, 'bad_stay');
+  bad({ data: { base: { adult: 2 } } }, 'bad_stay');
+  bad({ user: 'nobody', data: next }, 'not_found');
+  assert.strictEqual(logged.length, 4);
+  // a period with its own composition is priced by it; unknown keys are dropped
+  r = A({ action: 'adminFamilyUpdate', user: 'cohen', data: { base: { adult: 2, junk: 7 }, periods: [
+    { from: '2026-10-06', to: '2026-10-07', custom: false, counts: { adult: 9 } },
+    { from: '2026-10-08', to: '2026-10-09', custom: true, counts: { adult: 1, mattress: 1 } }] } });
+  assert.deepStrictEqual([r.full, r.group, r.maxPeople], [152 + 76 + 12, 130 + 65 + 12, 2]);
+  assert.ok(!cohen.data.includes('junk'));
+  assert.deepStrictEqual(JSON.parse(cohen.data).periods[0].counts.adult, 0);
+
+  // unlock: the right code works at once; the wrong one still counts; a retry is quiet
+  r = A({ action: 'adminFamilyUnlock', user: 'משפחת לוי' });
+  assert.ok(r.ok && r.saved);
+  assert.ok(pub({ action: 'load', user: 'משפחת לוי', pin: '5555' }).ok);
+  assert.strictEqual(fs2.rows.find(x => x.user === 'משפחת לוי').pinHash, hashes[1]);
+  assert.deepStrictEqual(logged.slice(-1).map(x => [x[3], x[4], x[5], x[6]]), [['משפחת לוי', 'fails', '5', '0']]);
+  const n = logged.length;
+  assert.ok(!A({ action: 'adminFamilyUnlock', user: 'משפחת לוי' }).saved); assert.strictEqual(logged.length, n);
+  assert.strictEqual(A({ action: 'adminFamilyUnlock', user: 'nobody' }).error, 'not_found');
+
+  // cancel: gone from the public summary, the log keeps the stay (never the code); a retry is fine
+  r = A({ action: 'adminFamilyCancel', user: 'cohen' });
+  assert.ok(r.ok && r.removed);
+  assert.deepStrictEqual(pub({ action: 'summary' }).names, ['משפחת לוי']);
+  const last = logged[logged.length - 1];
+  assert.deepStrictEqual([last[3], last[4], last[6]], ['Cohen', 'registration', ctx.AST.cancelled]);
+  assert.strictEqual(JSON.parse(last[5]).family, 'Cohen'); assert.strictEqual(JSON.parse(last[5]).full, 240);
+  r = A({ action: 'adminFamilyCancel', user: 'cohen' });
+  assert.ok(r.ok && !r.removed); assert.strictEqual(logged.length, n + 1);
+
+  // no reply and no log row ever carries a code's hash
+  const out = JSON.stringify(replies) + JSON.stringify(logged);
+  hashes.forEach(h => assert.ok(!out.includes(h), 'a code hash leaked'));
+  assert.ok(!/pinHash|"fails"|"1234"|"5555"/.test(JSON.stringify(replies)));
+}
+console.log('admin registration tests passed');

@@ -15,7 +15,7 @@ Static RTL site on GitHub Pages (`main` = live, about 1 minute after a push; no 
 - **New Google permissions are requested on the first run from the sheet menu, not at deploy time.** A missing permission fails silently in `syncOrganizers_` (by design, so registrations keep working).
 - **About 1 in 3 web-app replies are dropped by Google** (a 404 page after the script already ran). Every action must be safe to repeat. The site retries up to 4 times, and a delete that finds `not_found` on a retry counts as success.
 - The registration sheet holds codes (hashed) and raw data: **never share it**. Organizers get the separate synced sheet (see `backend/SETUP.md`).
-- **Code shared by site and backend lives once**: `search.js` is loaded by the page and inlined into `Code.gs` by `build.py` at `//@include search.js`.
+- **Code shared by site and backend lives once**: `search.js` is loaded by the page and inlined into `Code.gs` by `build.py` at `//@include search.js`. Same for `prices.js` + `calc.js` (the managing page's registration edits are priced server-side), so **a price change needs a build and a backend deploy too**.
 - **Tooling:** `\uXXXX` typed into a Write/Bash input arrives as the literal character, and bash heredocs holding Hebrew failed to parse. Edit Hebrew files with the Edit tool. Raw Hebrew in a JS regex class is fine, because `build.py` escapes it.
 - Sheets reads "06/10" as a month-first date. Write night labels with a weekday prefix (`ג׳ 06/10`).
 

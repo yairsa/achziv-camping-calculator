@@ -1,7 +1,7 @@
 // Run: node tests/calc.test.js
 const assert = require('assert');
 global.window = {};
-require('../prices.js'); require('../app.js');
+require('../prices.js'); require('../calc.js');
 const K = window.CampCalc;
 const counts = (o) => Object.assign({ adult:0, child:0, toddler:0, matmonAdult:0, matmonChild:0, reserveAdult:0,
   reserveChild:0, soldier:0, student:0, senior:0, idfDisabled:0, escort:0, mattress:0 }, o);

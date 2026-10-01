@@ -1,6 +1,7 @@
 // Price data — copied from the official parks.org.il page for the Achziv night camp.
 // Source: https://www.parks.org.il/camping/חניון-לילה-גן-לאומי-אכזיב-וחוף-אכזיב/
-// Checked 30/09/2026. When the park changes prices, edit only this file.
+// Checked 30/09/2026. When the park changes prices, edit only this file, then run `python backend/build.py` and have the
+// backend redeployed: Code.gs carries a copy for the managing page's registration edits.
 
 window.CAMP = {
   checked: '30/09/2026',

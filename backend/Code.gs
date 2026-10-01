@@ -25,6 +25,9 @@
 //   adminLogin {name, password}                                        -> {token, name, exp}: the managing page's login
 //   adminMe    {token}                                                 -> {name} while the token is valid
 //   (every other admin action carries {token}; any token problem answers error 'auth')
+//   adminFamilies {token}                                              -> every registration (never a code)
+//   adminFamilyUpdate {token, user, data}                              -> a new stay, priced by calc.js
+//   adminFamilyCancel {token, user} / adminFamilyUnlock {token, user}  -> remove it / lift a wrong-code lock
 
 var SHEET_NAME = '\u05d4\u05e8\u05e9\u05de\u05d5\u05ea';
 var HEAD = ['\u05e9\u05dd \u05de\u05e9\u05ea\u05de\u05e9', '\u05e9\u05dd \u05dc\u05d4\u05e6\u05d2\u05d4', '\u05e2\u05d5\u05d3\u05db\u05df', '\u05dc\u05e0\u05d9\u05dd (\u05de\u05e7\u05e1\u05d9\u05de\u05d5\u05dd)', '\u05dc\u05e0\u05d9\u05dd \u05dc\u05e4\u05d9 \u05dc\u05d9\u05dc\u05d4', '\u05de\u05d7\u05d9\u05e8 \u05de\u05dc\u05d0', '\u05de\u05d7\u05d9\u05e8 \u05e7\u05d1\u05d5\u05e6\u05ea\u05d9',
@@ -54,7 +57,9 @@ function doPost(e) {
     }
     if (req && /^admin/.test(req.action)) {
       var ares = route(req, sheetStore_(), tipsStore_(), activitiesStore_(), adminStore_());
-      if (ares.ok && !ADMIN_READS[req.action]) {
+      if (ares.ok && FAMILY_WRITES[req.action]) {
+        try { syncOrganizers_(); } catch (x) { /* the organizers' copy must never break a change */ }
+      } else if (ares.ok && !ADMIN_READS[req.action]) {
         CacheService.getScriptCache().removeAll([TIPS_CACHE, GEAR_CACHE, ACTS_CACHE, TOUR_CACHE]);   // the site shows it at once
       }
       return json_(ares);
@@ -98,6 +103,10 @@ function route(req, store, tstore, astore, adm) {
       case 'adminDecide': return adminDecide_(req, tstore, adm);
       case 'adminList': return adminList_(req, tstore, astore, adm);
       case 'adminUpdate': return adminUpdate_(req, tstore, astore, adm);
+      case 'adminFamilies': return adminFamilies_(req, store, adm);
+      case 'adminFamilyUpdate': return adminFamilyUpdate_(req, store, adm);
+      case 'adminFamilyCancel': return adminFamilyCancel_(req, store, adm);
+      case 'adminFamilyUnlock': return adminFamilyUnlock_(req, store, adm);
       default: return { ok: false, error: 'bad_request' };
     }
   } catch (x) {
@@ -1258,7 +1267,7 @@ function adminMe_(req, adm) { return { ok: true, name: adminAuth_(req, adm).name
 // ---------- managing page: the waiting list and one item's decision (docs/admin-plan.md \u00a74.2) ----------
 // Tips, comments and suggested gear items waiting for approval. Activities need no approval (activities-plan \u00a72).
 var ADMIN_KINDS = { tip: 1, comment: 1, gear: 1 };
-var ADMIN_READS = { adminLogin: 1, adminMe: 1, adminQueue: 1, adminList: 1 };   // no public cache to clear
+var ADMIN_READS = { adminLogin: 1, adminMe: 1, adminQueue: 1, adminList: 1, adminFamilies: 1 };   // no public cache to clear
 var ADMIN_DECISIONS = { tip: ['approved', 'rejected', 'merged'], comment: ['approved', 'rejected'], gear: ['approved', 'rejected'] };
 var GEAR_LIMITS = { tags: 100, note: 200 };
 var ADMIN_LOG_TAB = '\u05d9\u05d5\u05de\u05df \u05e0\u05d9\u05d4\u05d5\u05dc';
@@ -1491,6 +1500,242 @@ function adminUpdate_(req, ts, as, adm) {
   });
   return { ok: true, id: id, saved: saved, status: kind === 'tour' ? '' : keyOf_(kind === 'activity' ? AST : ST, row.status) };
 }
+
+// ---------- managing page: registrations (docs/admin-plan.md \u00a74.4) ----------
+// The site's own price code, inlined, so a stay edited here is priced exactly as the family's calculator prices it.
+// (A change to prices.js or calc.js therefore makes Code.gs stale: build, and Yair deploys.)
+var window = {};
+// Price data - copied from the official parks.org.il page for the Achziv night camp.
+// Source: https://www.parks.org.il/camping/\u05d7\u05e0\u05d9\u05d5\u05df-\u05dc\u05d9\u05dc\u05d4-\u05d2\u05df-\u05dc\u05d0\u05d5\u05de\u05d9-\u05d0\u05db\u05d6\u05d9\u05d1-\u05d5\u05d7\u05d5\u05e3-\u05d0\u05db\u05d6\u05d9\u05d1/
+// Checked 30/09/2026. When the park changes prices, edit only this file, then run `python backend/build.py` and have the
+// backend redeployed: Code.gs carries a copy for the managing page's registration edits.
+
+window.CAMP = {
+  checked: '30/09/2026',
+  sourceUrl: 'https://www.parks.org.il/camping/%D7%97%D7%A0%D7%99%D7%95%D7%9F-%D7%9C%D7%99%D7%9C%D7%94-%D7%92%D7%9F-%D7%9C%D7%90%D7%95%D7%9E%D7%99-%D7%90%D7%9B%D7%96%D7%99%D7%91-%D7%95%D7%97%D7%95%D7%A3-%D7%90%D7%9B%D7%96%D7%99%D7%91/',
+
+  // Registration backend (Google Apps Script web-app URL, see backend/SETUP.md).
+  // Empty = registration switched off; the calculator still works.
+  apiUrl: 'https://script.google.com/macros/s/AKfycbwExRfGBKQl0Yvf5d0LG2aJiqkKxGbok4EJAiyW6vt6rsWLl0UigB-HLCrsnFrB0hMEwA/exec',
+
+  // Stay defaults (ISO dates; displayed day-first).
+  defaultFrom: '2026-10-06',
+  defaultTo: '2026-10-10',
+  dateRangeStart: '2026-10-01',
+  dateRangeEnd: '2026-10-20',
+  maxConsecutiveNights: 6,
+  groupMinPeople: 30,
+
+  // Price per person per night, tent camping (\u05dc\u05d9\u05e0\u05ea \u05e9\u05d8\u05d7 \u05d1\u05d0\u05d5\u05d4\u05dc\u05d9\u05dd \u05e4\u05e8\u05d8\u05d9\u05d9\u05dd).
+  // groupPrice: official "\u05e7\u05d1\u05d5\u05e6\u05d4" rate (\u224815% off) - applies to regular payers only.
+  // main: shown in the basic family composition; the rest sit under "discounts".
+  categories: [
+    { id: 'adult',   label: '\u05de\u05d1\u05d5\u05d2\u05e8',              ages: '\u05d2\u05d9\u05dc 14 \u05d5\u05de\u05e2\u05dc\u05d4', price: 76, groupPrice: 65, main: true,
+      note: '\u05de\u05d2\u05d9\u05dc 14 \u05d5\u05de\u05e2\u05dc\u05d4 \u05de\u05e9\u05dc\u05de\u05d9\u05dd \u05de\u05d7\u05d9\u05e8 \u05de\u05d1\u05d5\u05d2\u05e8. \u05d1\u05e7\u05d1\u05d5\u05e6\u05d4 \u05e9\u05dc 30+ \u05dc\u05e0\u05d9\u05dd: 65 \u20aa' },
+    { id: 'child',   label: '\u05d9\u05dc\u05d3',                ages: '\u05d2\u05d9\u05dc 5 \u05e2\u05d3 13',  price: 58, groupPrice: 49, main: true,
+      note: '\u05de\u05d2\u05d9\u05dc 5 \u05d5\u05e2\u05d3 14 (\u05dc\u05d0 \u05db\u05d5\u05dc\u05dc). \u05d1\u05e7\u05d1\u05d5\u05e6\u05d4 \u05e9\u05dc 30+ \u05dc\u05e0\u05d9\u05dd: 49 \u20aa' },
+    { id: 'toddler', label: '\u05e4\u05e2\u05d5\u05d8',               ages: '\u05e2\u05d3 \u05d2\u05d9\u05dc 5',     price: 0,  main: true,
+      note: '\u05d9\u05dc\u05d3\u05d9\u05dd \u05de\u05ea\u05d7\u05ea \u05dc\u05d2\u05d9\u05dc 5 \u05dc\u05d0 \u05de\u05d5\u05e4\u05d9\u05e2\u05d9\u05dd \u05d1\u05de\u05d7\u05d9\u05e8\u05d5\u05df \u05d5\u05dc\u05d0 \u05de\u05e9\u05dc\u05de\u05d9\u05dd' },
+
+    { id: 'matmonAdult',  label: '\u05de\u05e0\u05d5\u05d9 \u05de\u05d8\u05de\u05d5\u05df - \u05de\u05d1\u05d5\u05d2\u05e8', ages: '\u05d2\u05d9\u05dc 14 \u05d5\u05de\u05e2\u05dc\u05d4', price: 57,
+      note: '\u05d1\u05d4\u05e6\u05d2\u05ea \u05db\u05e8\u05d8\u05d9\u05e1 \u05de\u05e0\u05d5\u05d9 \u05d1\u05ea\u05d5\u05e7\u05e3, \u05dc\u05e4\u05d9 \u05d4\u05d4\u05e8\u05db\u05d1 \u05e9\u05e2\u05dc \u05d4\u05db\u05e8\u05d8\u05d9\u05e1' },
+    { id: 'matmonChild',  label: '\u05de\u05e0\u05d5\u05d9 \u05de\u05d8\u05de\u05d5\u05df - \u05d9\u05dc\u05d3',   ages: '\u05d2\u05d9\u05dc 5 \u05e2\u05d3 13',  price: 44,
+      note: '\u05d1\u05d4\u05e6\u05d2\u05ea \u05db\u05e8\u05d8\u05d9\u05e1 \u05de\u05e0\u05d5\u05d9 \u05d1\u05ea\u05d5\u05e7\u05e3, \u05dc\u05e4\u05d9 \u05d4\u05d4\u05e8\u05db\u05d1 \u05e9\u05e2\u05dc \u05d4\u05db\u05e8\u05d8\u05d9\u05e1' },
+    { id: 'reserveAdult', label: '\u05de\u05e9\u05e8\u05ea \u05de\u05d9\u05dc\u05d5\u05d0\u05d9\u05dd \u05e4\u05e2\u05d9\u05dc \u05d5\u05de\u05e9\u05e4\u05d7\u05ea\u05d5 - \u05de\u05d1\u05d5\u05d2\u05e8', ages: '\u05d2\u05d9\u05dc 14 \u05d5\u05de\u05e2\u05dc\u05d4', price: 65,
+      note: '\u05dc\u05d1\u05e2\u05dc \u05d4\u05db\u05e8\u05d8\u05d9\u05e1 \u05d5\u05dc\u05d1\u05e0\u05d9 \u05de\u05e9\u05e4\u05d7\u05ea\u05d5, \u05d1\u05d4\u05e6\u05d2\u05ea \u05db\u05e8\u05d8\u05d9\u05e1 \u05de\u05d9\u05dc\u05d5\u05d0\u05d9\u05dd \u05e4\u05e2\u05d9\u05dc' },
+    { id: 'reserveChild', label: '\u05de\u05e9\u05e8\u05ea \u05de\u05d9\u05dc\u05d5\u05d0\u05d9\u05dd \u05e4\u05e2\u05d9\u05dc \u05d5\u05de\u05e9\u05e4\u05d7\u05ea\u05d5 - \u05d9\u05dc\u05d3',   ages: '\u05d2\u05d9\u05dc 5 \u05e2\u05d3 13',  price: 49,
+      note: '\u05dc\u05d1\u05e2\u05dc \u05d4\u05db\u05e8\u05d8\u05d9\u05e1 \u05d5\u05dc\u05d1\u05e0\u05d9 \u05de\u05e9\u05e4\u05d7\u05ea\u05d5, \u05d1\u05d4\u05e6\u05d2\u05ea \u05db\u05e8\u05d8\u05d9\u05e1 \u05de\u05d9\u05dc\u05d5\u05d0\u05d9\u05dd \u05e4\u05e2\u05d9\u05dc' },
+    { id: 'soldier', label: '\u05d7\u05d9\u05d9\u05dc/\u05ea \u05d1\u05e9\u05d9\u05e8\u05d5\u05ea \u05d7\u05d5\u05d1\u05d4 / \u05e9\u05d9\u05e8\u05d5\u05ea \u05dc\u05d0\u05d5\u05de\u05d9', price: 58, note: '\u05d1\u05d4\u05e6\u05d2\u05ea \u05d7\u05d5\u05d2\u05e8 / \u05db\u05e8\u05d8\u05d9\u05e1 \u05e9\u05d9\u05e8\u05d5\u05ea \u05dc\u05d0\u05d5\u05de\u05d9' },
+    { id: 'student', label: '\u05e1\u05d8\u05d5\u05d3\u05e0\u05d8/\u05d9\u05ea',          price: 65, note: '\u05d1\u05d4\u05e6\u05d2\u05ea \u05db\u05e8\u05d8\u05d9\u05e1 \u05d1\u05ea\u05d5\u05e7\u05e3' },
+    { id: 'senior',  label: '\u05d0\u05d6\u05e8\u05d7/\u05d9\u05ea \u05d5\u05ea\u05d9\u05e7/\u05d4',     price: 38, note: '\u05d1\u05d4\u05e6\u05d2\u05ea \u05ea\u05e2\u05d5\u05d3\u05d4' },
+    { id: 'idfDisabled', label: '\u05e0\u05db\u05d4 \u05e6\u05d4"\u05dc \u05d5\u05de\u05dc\u05d5\u05d5\u05d4', price: 38, note: '\u05d1\u05d4\u05e6\u05d2\u05ea \u05ea\u05e2\u05d5\u05d3\u05d4' },
+    { id: 'escort',  label: '\u05de\u05dc\u05d5\u05d5\u05d4 \u05dc\u05d0\u05d3\u05dd \u05e2\u05dd \u05de\u05d5\u05d2\u05d1\u05dc\u05d5\u05ea', price: 0,
+      note: '\u05e4\u05d8\u05d5\u05e8 \u05dc\u05de\u05dc\u05d5\u05d5\u05d4 \u05d1\u05dc\u05d1\u05d3 - \u05d1\u05e2\u05dc \u05d4\u05ea\u05e2\u05d5\u05d3\u05d4 \u05de\u05e9\u05dc\u05dd \u05de\u05d7\u05d9\u05e8 \u05de\u05dc\u05d0' }
+  ],
+
+  // Per-night extras (not people - never counted toward the group size).
+  extras: [
+    { id: 'mattress', label: '\u05d4\u05e9\u05db\u05e8\u05ea \u05de\u05d6\u05e8\u05df', unit: '\u05dc\u05dc\u05d9\u05dc\u05d4', price: 12,
+      note: '\u05dc\u05e4\u05d9 \u05d4\u05de\u05dc\u05d0\u05d9 \u05d1\u05d7\u05e0\u05d9\u05d5\u05df, \u05dc\u05dc\u05d0 \u05d4\u05ea\u05d7\u05d9\u05d9\u05d1\u05d5\u05ea. \u05d7\u05dc\u05d5\u05e7\u05d4 \u05d1\u05e9\u05e2\u05e8 \u05d1\u05d9\u05df 15:00 \u05dc-20:00, \u05d4\u05d7\u05d6\u05e8\u05d4 \u05d1\u05d9\u05df 08:00 \u05dc-11:00' }
+  ]
+};
+// The calculator's price logic: shared by the site and the backend (docs/admin-plan.md \u00a74.4).
+// The site loads it with a <script> tag after prices.js. backend/build.py inlines prices.js and this file into Code.gs
+// (`//@include`), so an organizer's edit on the managing page is priced by the very same code as the family's own.
+// Pure: no page, no storage. Reads window.CAMP (prices.js); writes window.CampCalc.
+(function () {
+  'use strict';
+  var C = window.CAMP;
+  var ALL = C.categories.concat(C.extras);
+  var DAY = 86400000;
+  var WEEKDAYS = ['\u05d0\u05f3', '\u05d1\u05f3', '\u05d2\u05f3', '\u05d3\u05f3', '\u05d4\u05f3', '\u05d5\u05f3', '\u05e9\u05f3'];
+  function toTime(iso) { var p = iso.split('-'); return Date.UTC(+p[0], +p[1] - 1, +p[2]); }
+  function toIso(t) { return new Date(t).toISOString().slice(0, 10); }
+  function dm(iso) { var p = iso.split('-'); return p[2] + '/' + p[1]; }          // day-first
+  function dmy(iso) { var p = iso.split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
+  function weekday(iso) { return WEEKDAYS[new Date(toTime(iso)).getUTCDay()]; }
+  function nightsBetween(from, to) { return Math.round((toTime(to) - toTime(from)) / DAY); }
+
+  function emptyCounts() {
+    var o = {};
+    ALL.forEach(function (c) { o[c.id] = 0; });
+    return o;
+  }
+
+  function peopleIn(counts) {
+    return C.categories.reduce(function (s, c) { return s + (counts[c.id] || 0); }, 0);
+  }
+
+  // One period: every line priced at full and at group rate.
+  function calcPeriod(counts, nights) {
+    var lines = [], full = 0, group = 0;
+    if (nights <= 0) return { lines: lines, full: 0, group: 0 };
+    ALL.forEach(function (c) {
+      var n = counts[c.id] || 0;
+      if (!n) return;
+      var f = n * c.price * nights;
+      var g = n * (c.groupPrice != null ? c.groupPrice : c.price) * nights;
+      lines.push({ id: c.id, label: c.label, count: n, price: c.price, groupPrice: c.groupPrice, nights: nights, full: f, group: g });
+      full += f; group += g;
+    });
+    return { lines: lines, full: full, group: group };
+  }
+
+  function calcAll(state) {
+    var periods = state.periods.map(function (p) {
+      var counts = p.custom ? p.counts : state.base;
+      var nights = nightsBetween(p.from, p.to);
+      var r = calcPeriod(counts, nights);
+      r.from = p.from; r.to = p.to; r.nights = nights; r.people = peopleIn(counts);
+      return r;
+    });
+    var full = 0, group = 0, maxPeople = 0;
+    periods.forEach(function (r) { full += r.full; group += r.group; if (r.nights > 0) maxPeople = Math.max(maxPeople, r.people); });
+    return { periods: periods, full: full, group: group, maxPeople: maxPeople };
+  }
+
+  function warnings(state) {
+    var w = [];
+    var ps = state.periods.map(function (p, i) { return { i: i, from: p.from, to: p.to, n: nightsBetween(p.from, p.to) }; });
+    ps.forEach(function (p) {
+      if (p.n <= 0) w.push('\u05ea\u05e7\u05d5\u05e4\u05d4 ' + (p.i + 1) + ': \u05ea\u05d0\u05e8\u05d9\u05da \u05d4\u05e2\u05d6\u05d9\u05d1\u05d4 \u05d7\u05d9\u05d9\u05d1 \u05dc\u05d4\u05d9\u05d5\u05ea \u05d0\u05d7\u05e8\u05d9 \u05ea\u05d0\u05e8\u05d9\u05da \u05d4\u05d4\u05d2\u05e2\u05d4.');
+      else if (p.n > C.maxConsecutiveNights) w.push('\u05ea\u05e7\u05d5\u05e4\u05d4 ' + (p.i + 1) + ': \u05d0\u05e4\u05e9\u05e8 \u05dc\u05db\u05dc \u05d4\u05d9\u05d5\u05ea\u05e8 ' + C.maxConsecutiveNights + ' \u05dc\u05d9\u05dc\u05d5\u05ea \u05d1\u05e8\u05e6\u05e3.');
+    });
+    for (var a = 0; a < ps.length; a++) for (var b = a + 1; b < ps.length; b++) {
+      if (ps[a].n > 0 && ps[b].n > 0 && toTime(ps[a].from) < toTime(ps[b].to) && toTime(ps[b].from) < toTime(ps[a].to))
+        w.push('\u05ea\u05e7\u05d5\u05e4\u05d5\u05ea ' + (a + 1) + ' \u05d5-' + (b + 1) + ' \u05d7\u05d5\u05e4\u05e4\u05d5\u05ea - \u05d0\u05d5\u05ea\u05d5 \u05dc\u05d9\u05dc\u05d4 \u05d9\u05d9\u05e1\u05e4\u05e8 \u05e4\u05e2\u05de\u05d9\u05d9\u05dd.');
+    }
+    var people = peopleIn(state.base) + state.periods.reduce(function (s, p) { return s + (p.custom ? peopleIn(p.counts) : 0); }, 0);
+    if (!people) w.push('\u05e2\u05d3\u05d9\u05d9\u05df \u05dc\u05d0 \u05d4\u05d5\u05e1\u05e4\u05ea\u05dd \u05d0\u05e3 \u05dc\u05df.');
+    return w;
+  }
+
+  // People sleeping each night, keyed by the ISO date of the evening.
+  function nightsCount(state) {
+    var out = {};
+    state.periods.forEach(function (p) {
+      var n = peopleIn(p.custom ? p.counts : state.base);
+      if (!n) return;
+      for (var t = toTime(p.from); t < toTime(p.to); t += DAY) { var k = toIso(t); out[k] = (out[k] || 0) + n; }
+    });
+    return out;
+  }
+
+
+  window.CampCalc = { calcPeriod: calcPeriod, calcAll: calcAll, warnings: warnings, nightsBetween: nightsBetween, dm: dm,
+    nightsCount: nightsCount, emptyCounts: emptyCounts, peopleIn: peopleIn, toTime: toTime, toIso: toIso, dmy: dmy,
+    weekday: weekday, ALL: ALL, DAY: DAY };
+})();
+
+// Codes never leave the sheet: no reply carries pinHash, and nothing here can show, set or reset a code.
+var FAMILY_WRITES = { adminFamilyUpdate: 1, adminFamilyCancel: 1, adminFamilyUnlock: 1 };   // the organizers' sheet re-syncs
+var MAX_PERIODS = 10;
+
+function isoDay_(s) { return /^\d{4}-\d{2}-\d{2}$/.test(String(s)) && window.CampCalc.toIso(window.CampCalc.toTime(s)) === s; }
+// A calculator state, checked and rebuilt key by key: known categories only, whole numbers 0-99, real dates.
+// A period without its own composition keeps no counts (the calculator ignores them), so one stay has one form.
+function familyState_(d) {
+  var K = window.CampCalc;
+  if (!d || typeof d !== 'object' || !Array.isArray(d.periods) || !d.periods.length || d.periods.length > MAX_PERIODS) fail_('bad_stay');
+  function counts(c) {
+    var o = K.emptyCounts();
+    Object.keys(o).forEach(function (k) {
+      var v = c && c[k] != null && c[k] !== '' ? Number(c[k]) : 0;
+      if (!(v >= 0 && v <= 99) || v !== Math.floor(v)) fail_('bad_stay');
+      o[k] = v;
+    });
+    return o;
+  }
+  return { base: counts(d.base), periods: d.periods.map(function (p) {
+    if (!p || !isoDay_(p.from) || !isoDay_(p.to)) fail_('bad_stay');
+    return { from: p.from, to: p.to, custom: !!p.custom, counts: p.custom ? counts(p.counts) : K.emptyCounts() };
+  }) };
+}
+function familyData_(r) {
+  try { var d = JSON.parse(r.data || '{}'); delete d.__nights; return d; } catch (x) { return {}; }
+}
+function familyRow_(store, user) {
+  var row = findRow_(store, normUser_(user));
+  if (!row) fail_('not_found');
+  return row;
+}
+function familyName_(r) { return unguard_(r.family); }
+
+// Every registration, by name: what the organizers' sheet shows, the stay itself (for the edit screen), and
+// whether wrong codes have locked it.
+function adminFamilies_(req, store, adm) {
+  adminAuth_(req, adm);
+  var now = store.nowMs();
+  var items = store.all().map(function (r) {
+    return { user: r.user, family: familyName_(r), updated: isDate_(r.updated) ? '' : String(r.updated || ''),
+             ms: when_(r.updated), maxPeople: +r.maxPeople || 0, nights: r.nights || {}, full: +r.full || 0,
+             group: +r.group || 0, locked: r.fails >= MAX_FAILS && now - r.lastFail < LOCK_MS, data: familyData_(r) };
+  }).sort(function (a, b) { return a.family < b.family ? -1 : a.family > b.family ? 1 : 0; });
+  return { ok: true, items: items };
+}
+
+// New dates or headcount for one family: the stay is checked like the calculator checks it (no warnings), then
+// priced and counted by calc.js. The code, the name and the lock stay as they are. Repeatable and logged.
+function adminFamilyUpdate_(req, store, adm) {
+  var who = adminAuth_(req, adm), row = familyRow_(store, req.user), K = window.CampCalc;
+  var state = familyState_(req.data);
+  if (K.warnings(state).length) fail_('bad_stay');
+  var data = JSON.stringify(state);
+  if (data.length > 20000) fail_('too_big');
+  var r = K.calcAll(state), nights = K.nightsCount(state), old;
+  try { old = JSON.stringify(familyState_(familyData_(row))); } catch (x) { old = String(row.data || ''); }
+  var view = { data: old, maxPeople: +row.maxPeople || 0, full: +row.full || 0, group: +row.group || 0 };
+  var saved = adminWrite_(adm, who, 'family', familyName_(row), view,
+    { data: data, maxPeople: r.maxPeople, full: r.full, group: r.group }, new Date(store.nowMs()), function (v) {
+      row.data = v.data; row.maxPeople = v.maxPeople; row.full = v.full; row.group = v.group; row.nights = nights;
+      row.updated = store.now();
+      store.put(row);
+    });
+  return { ok: true, user: row.user, saved: saved, maxPeople: row.maxPeople, nights: row.nights, full: row.full, group: row.group };
+}
+
+// The registration is removed (as when the family cancels it); the log keeps everything but the code, so it can be
+// typed back by hand. Not found = already cancelled (a retry after a dropped reply): fine.
+function adminFamilyCancel_(req, store, adm) {
+  var who = adminAuth_(req, adm), row = findRow_(store, normUser_(req.user));
+  if (!row) return { ok: true, removed: false };
+  var record = { family: familyName_(row), maxPeople: row.maxPeople, nights: row.nights, full: row.full, group: row.group,
+                 data: familyData_(row) };
+  if (adm.log) adm.log([[new Date(store.nowMs()), who.name, 'family', familyName_(row), 'registration',
+                         logCell_(JSON.stringify(record)), AST.cancelled]]);
+  store.remove(row);
+  return { ok: true, removed: true };
+}
+
+// Wrong codes lock a family for 15 minutes; this lifts it at once. The code itself is untouched.
+function adminFamilyUnlock_(req, store, adm) {
+  var who = adminAuth_(req, adm), row = familyRow_(store, req.user);
+  var view = { fails: +row.fails || 0, lastFail: +row.lastFail || 0 };
+  var saved = adminWrite_(adm, who, 'family', familyName_(row), view, { fails: 0, lastFail: 0 }, new Date(store.nowMs()),
+    function (v) { row.fails = v.fails; row.lastFail = v.lastFail; store.put(row); }, { lastFail: 1 });
+  return { ok: true, user: row.user, saved: saved };
+}
+
 function logCell_(v) {
   v = isDate_(v) ? v : String(v == null ? '' : v);
   return typeof v === 'string' && /^[=+\-@]/.test(v) ? "'" + v : v;

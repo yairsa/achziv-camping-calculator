@@ -65,9 +65,14 @@
 - [x] Gate: all gates green
 
 #### 4.4 Registrations
-- [ ] Actions `adminFamilies` (name, nights, people per night, updated, locked?) · `adminFamilyUpdate {user, nights, maxPeople, data}` recomputing prices with the calculator logic · `adminFamilyCancel` · `adminFamilyUnlock`; the organizers' sheet re-syncs after each
+- [x] Actions `adminFamilies` (name, nights, people per night, updated, locked?) · `adminFamilyUpdate {user, nights, maxPeople, data}` recomputing prices with the calculator logic · `adminFamilyCancel` · `adminFamilyUnlock`; the organizers' sheet re-syncs after each
+  - done: the calculator's pure code moved out of `app.js` into **`calc.js`** (`window.CampCalc`), and `build.py` inlines `prices.js` + `calc.js` into Code.gs (after `var window = {}`). So `adminFamilyUpdate {user, data}` takes only the stay; the server checks it key by key (`familyState_`: known categories, whole numbers 0-99, real dates, ≤10 periods; a period without its own composition keeps no counts), refuses any calculator warning (`bad_stay`: overlap, >6 nights, no night, nobody), and computes full / group / maxPeople / nights itself; any price the request carries is ignored. ⚠️ **A change to `prices.js` or `calc.js` now makes Code.gs stale**: build, and Yair redeploys, or edits on the managing page price with the old list (the site itself is unaffected)
+  - logged per field as kind `family`, id = the family's name; `data` old/new is the whole stay, so it can be typed back. Retry = `saved: false`, nothing logged. Cancel removes the row like the family's own delete, logs one `registration` row holding the stay (never the code), and answers `removed: false` when already gone. Unlock zeroes the wrong-code count (logged `fails`); the code is untouched. No reply carries `pinHash` or the fail count; `locked` is computed
+  - `FAMILY_WRITES` re-sync the organizers' sheet in `doPost` (and clear no public cache); `adminFamilies` is in `ADMIN_READS`
+  - 7 mutations (warnings check, client price kept, non-custom counts kept, unlock not reset, cancel not removing, cancel retry failing, hash in the list) all turned the tests red
 - [ ] `admin.html`: the families tab; a family's screen reusing the calculator form (dates, headcount, discounts) and its price
 - [ ] Tests: backend (update keeps the code, cancel, unlock; codes never in any reply) + e2e
+  - backend half done (`admin registration tests` in `tests/backend.test.js`); e2e with the page
 - [ ] Gate: all gates green
 
 #### 4.5 Go-live

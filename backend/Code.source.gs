@@ -24,6 +24,9 @@
 //   adminLogin {name, password}                                        → {token, name, exp}: the managing page's login
 //   adminMe    {token}                                                 → {name} while the token is valid
 //   (every other admin action carries {token}; any token problem answers error 'auth')
+//   adminFamilies {token}                                              → every registration (never a code)
+//   adminFamilyUpdate {token, user, data}                              → a new stay, priced by calc.js
+//   adminFamilyCancel {token, user} / adminFamilyUnlock {token, user}  → remove it / lift a wrong-code lock
 
 var SHEET_NAME = 'הרשמות';
 var HEAD = ['שם משתמש', 'שם להצגה', 'עודכן', 'לנים (מקסימום)', 'לנים לפי לילה', 'מחיר מלא', 'מחיר קבוצתי',
@@ -53,7 +56,9 @@ function doPost(e) {
     }
     if (req && /^admin/.test(req.action)) {
       var ares = route(req, sheetStore_(), tipsStore_(), activitiesStore_(), adminStore_());
-      if (ares.ok && !ADMIN_READS[req.action]) {
+      if (ares.ok && FAMILY_WRITES[req.action]) {
+        try { syncOrganizers_(); } catch (x) { /* the organizers' copy must never break a change */ }
+      } else if (ares.ok && !ADMIN_READS[req.action]) {
         CacheService.getScriptCache().removeAll([TIPS_CACHE, GEAR_CACHE, ACTS_CACHE, TOUR_CACHE]);   // the site shows it at once
       }
       return json_(ares);
@@ -97,6 +102,10 @@ function route(req, store, tstore, astore, adm) {
       case 'adminDecide': return adminDecide_(req, tstore, adm);
       case 'adminList': return adminList_(req, tstore, astore, adm);
       case 'adminUpdate': return adminUpdate_(req, tstore, astore, adm);
+      case 'adminFamilies': return adminFamilies_(req, store, adm);
+      case 'adminFamilyUpdate': return adminFamilyUpdate_(req, store, adm);
+      case 'adminFamilyCancel': return adminFamilyCancel_(req, store, adm);
+      case 'adminFamilyUnlock': return adminFamilyUnlock_(req, store, adm);
       default: return { ok: false, error: 'bad_request' };
     }
   } catch (x) {
@@ -931,7 +940,7 @@ function adminMe_(req, adm) { return { ok: true, name: adminAuth_(req, adm).name
 // ---------- managing page: the waiting list and one item's decision (docs/admin-plan.md §4.2) ----------
 // Tips, comments and suggested gear items waiting for approval. Activities need no approval (activities-plan §2).
 var ADMIN_KINDS = { tip: 1, comment: 1, gear: 1 };
-var ADMIN_READS = { adminLogin: 1, adminMe: 1, adminQueue: 1, adminList: 1 };   // no public cache to clear
+var ADMIN_READS = { adminLogin: 1, adminMe: 1, adminQueue: 1, adminList: 1, adminFamilies: 1 };   // no public cache to clear
 var ADMIN_DECISIONS = { tip: ['approved', 'rejected', 'merged'], comment: ['approved', 'rejected'], gear: ['approved', 'rejected'] };
 var GEAR_LIMITS = { tags: 100, note: 200 };
 var ADMIN_LOG_TAB = 'יומן ניהול';
@@ -1164,6 +1173,103 @@ function adminUpdate_(req, ts, as, adm) {
   });
   return { ok: true, id: id, saved: saved, status: kind === 'tour' ? '' : keyOf_(kind === 'activity' ? AST : ST, row.status) };
 }
+
+// ---------- managing page: registrations (docs/admin-plan.md §4.4) ----------
+// The site's own price code, inlined, so a stay edited here is priced exactly as the family's calculator prices it.
+// (A change to prices.js or calc.js therefore makes Code.gs stale: build, and Yair deploys.)
+var window = {};
+//@include prices.js
+//@include calc.js
+
+// Codes never leave the sheet: no reply carries pinHash, and nothing here can show, set or reset a code.
+var FAMILY_WRITES = { adminFamilyUpdate: 1, adminFamilyCancel: 1, adminFamilyUnlock: 1 };   // the organizers' sheet re-syncs
+var MAX_PERIODS = 10;
+
+function isoDay_(s) { return /^\d{4}-\d{2}-\d{2}$/.test(String(s)) && window.CampCalc.toIso(window.CampCalc.toTime(s)) === s; }
+// A calculator state, checked and rebuilt key by key: known categories only, whole numbers 0-99, real dates.
+// A period without its own composition keeps no counts (the calculator ignores them), so one stay has one form.
+function familyState_(d) {
+  var K = window.CampCalc;
+  if (!d || typeof d !== 'object' || !Array.isArray(d.periods) || !d.periods.length || d.periods.length > MAX_PERIODS) fail_('bad_stay');
+  function counts(c) {
+    var o = K.emptyCounts();
+    Object.keys(o).forEach(function (k) {
+      var v = c && c[k] != null && c[k] !== '' ? Number(c[k]) : 0;
+      if (!(v >= 0 && v <= 99) || v !== Math.floor(v)) fail_('bad_stay');
+      o[k] = v;
+    });
+    return o;
+  }
+  return { base: counts(d.base), periods: d.periods.map(function (p) {
+    if (!p || !isoDay_(p.from) || !isoDay_(p.to)) fail_('bad_stay');
+    return { from: p.from, to: p.to, custom: !!p.custom, counts: p.custom ? counts(p.counts) : K.emptyCounts() };
+  }) };
+}
+function familyData_(r) {
+  try { var d = JSON.parse(r.data || '{}'); delete d.__nights; return d; } catch (x) { return {}; }
+}
+function familyRow_(store, user) {
+  var row = findRow_(store, normUser_(user));
+  if (!row) fail_('not_found');
+  return row;
+}
+function familyName_(r) { return unguard_(r.family); }
+
+// Every registration, by name: what the organizers' sheet shows, the stay itself (for the edit screen), and
+// whether wrong codes have locked it.
+function adminFamilies_(req, store, adm) {
+  adminAuth_(req, adm);
+  var now = store.nowMs();
+  var items = store.all().map(function (r) {
+    return { user: r.user, family: familyName_(r), updated: isDate_(r.updated) ? '' : String(r.updated || ''),
+             ms: when_(r.updated), maxPeople: +r.maxPeople || 0, nights: r.nights || {}, full: +r.full || 0,
+             group: +r.group || 0, locked: r.fails >= MAX_FAILS && now - r.lastFail < LOCK_MS, data: familyData_(r) };
+  }).sort(function (a, b) { return a.family < b.family ? -1 : a.family > b.family ? 1 : 0; });
+  return { ok: true, items: items };
+}
+
+// New dates or headcount for one family: the stay is checked like the calculator checks it (no warnings), then
+// priced and counted by calc.js. The code, the name and the lock stay as they are. Repeatable and logged.
+function adminFamilyUpdate_(req, store, adm) {
+  var who = adminAuth_(req, adm), row = familyRow_(store, req.user), K = window.CampCalc;
+  var state = familyState_(req.data);
+  if (K.warnings(state).length) fail_('bad_stay');
+  var data = JSON.stringify(state);
+  if (data.length > 20000) fail_('too_big');
+  var r = K.calcAll(state), nights = K.nightsCount(state), old;
+  try { old = JSON.stringify(familyState_(familyData_(row))); } catch (x) { old = String(row.data || ''); }
+  var view = { data: old, maxPeople: +row.maxPeople || 0, full: +row.full || 0, group: +row.group || 0 };
+  var saved = adminWrite_(adm, who, 'family', familyName_(row), view,
+    { data: data, maxPeople: r.maxPeople, full: r.full, group: r.group }, new Date(store.nowMs()), function (v) {
+      row.data = v.data; row.maxPeople = v.maxPeople; row.full = v.full; row.group = v.group; row.nights = nights;
+      row.updated = store.now();
+      store.put(row);
+    });
+  return { ok: true, user: row.user, saved: saved, maxPeople: row.maxPeople, nights: row.nights, full: row.full, group: row.group };
+}
+
+// The registration is removed (as when the family cancels it); the log keeps everything but the code, so it can be
+// typed back by hand. Not found = already cancelled (a retry after a dropped reply): fine.
+function adminFamilyCancel_(req, store, adm) {
+  var who = adminAuth_(req, adm), row = findRow_(store, normUser_(req.user));
+  if (!row) return { ok: true, removed: false };
+  var record = { family: familyName_(row), maxPeople: row.maxPeople, nights: row.nights, full: row.full, group: row.group,
+                 data: familyData_(row) };
+  if (adm.log) adm.log([[new Date(store.nowMs()), who.name, 'family', familyName_(row), 'registration',
+                         logCell_(JSON.stringify(record)), AST.cancelled]]);
+  store.remove(row);
+  return { ok: true, removed: true };
+}
+
+// Wrong codes lock a family for 15 minutes; this lifts it at once. The code itself is untouched.
+function adminFamilyUnlock_(req, store, adm) {
+  var who = adminAuth_(req, adm), row = familyRow_(store, req.user);
+  var view = { fails: +row.fails || 0, lastFail: +row.lastFail || 0 };
+  var saved = adminWrite_(adm, who, 'family', familyName_(row), view, { fails: 0, lastFail: 0 }, new Date(store.nowMs()),
+    function (v) { row.fails = v.fails; row.lastFail = v.lastFail; store.put(row); }, { lastFail: 1 });
+  return { ok: true, user: row.user, saved: saved };
+}
+
 function logCell_(v) {
   v = isDate_(v) ? v : String(v == null ? '' : v);
   return typeof v === 'string' && /^[=+\-@]/.test(v) ? "'" + v : v;
