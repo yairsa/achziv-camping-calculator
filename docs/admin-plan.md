@@ -2,7 +2,7 @@
 
 > **Open questions for Yair:** none. The decisions in §2 are derived; say if one is wrong.
 
-**Status:** §4.1-§4.4 done 01/10/2026 (pushed, backend not deployed). Next: the first unticked box in §4.5 (go-live).
+**Status:** §4.1-§4.4 done 01/10/2026, §4.5 done except Yair's deploy + password (the second §4.5 box), which is his.
 
 ## 1. The brief (Yair, 01/10/2026)
 
@@ -79,9 +79,10 @@
 - [x] Gate: all gates green
 
 #### 4.5 Go-live
-- [ ] Push; live check of the page (login screen, "server not updated yet" with the old script)
+- [x] Push; live check of the page (login screen, "server not updated yet" with the old script)
+  - done 01/10: live admin.html at 360px, no page errors, no horizontal scroll; a login against the deployed (old) script shows the "השרת עוד לא עודכן" banner
 - [ ] Hand Yair `Code.gs` on the clipboard: deploy a new version, then **מארגנים → סיסמת ניהול** once. Then a live check together: log in on his phone, the waiting list loads
-- [ ] `SETUP.md`: the managing page replaces the sheet sections for day-to-day work (the sheet sections stay as the fallback)
+- [x] `SETUP.md`: the managing page replaces the sheet sections for day-to-day work (the sheet sections stay as the fallback)
 
 ## 5. Log
 - 01/10/2026 — planned (this file). The 30/09 payments plan superseded.

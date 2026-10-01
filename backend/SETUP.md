@@ -21,6 +21,16 @@ PINs are stored only as salted SHA-256 hashes; the salt is kept in the script's 
 
 **Public by design:** the list of registered names (for the name dropdown) and the people-per-night totals. Prices, codes and calculator details are not public.
 
+## The managing page (day-to-day work, from a phone)
+
+`admin.html` on the site (https://yairsa.github.io/achziv-camping-calculator/admin.html; not linked from the public page) does on a phone what the sections below do in the sheet: the waiting list (tips, comments, suggested gear) reviewed one by one, with edit · אישור · דחייה · מיזוג; any current tip, comment, gear item, activity or tour text edited or hidden; and registrations (dates and headcount priced by the calculator's own code, cancel, unlock a locked name). It never shows or resets a family's code, and payments stay in the organizers' sheet.
+
+- **Password, once per organizer:** in the registration sheet, **מארגנים → סיסמת ניהול**, then a name and a password. Running it again for the same name replaces that password and logs out that name's phones. Only a salted hash is stored, in the script's properties.
+- **Login** lasts 7 days on that phone; **יציאה** ends it. 5 wrong passwords lock that name for 15 minutes.
+- **Every change is logged** in a new **יומן ניהול** tab: when, who, what, field, old value, new value. Nothing is deleted, so the log is the undo.
+- **"השרת עוד לא עודכן"** on the page means the deployed script is older than the page: paste the new `Code.gs` and deploy a new version.
+- **The sheet sections below stay valid** as the fallback: editing the cells directly still works.
+
 ## Organizers' sheet (safe to share)
 
 A **separate** Google Sheet the script keeps up to date after every registration, update or cancellation. It's separate because sharing a sheet shares all its tabs, and the registration file holds the codes.
