@@ -717,3 +717,124 @@ console.log('admin login tests passed');
   assert.deepStrictEqual(q.mergeTargets.map(t => t.id), [3, 1]);
 }
 console.log('admin queue tests passed');
+
+// ---------- managing page: edit anything current (admin-plan §4.3) ----------
+{
+  const ST = ctx.ST, AST = ctx.AST, NL = String.fromCharCode(10);
+  const logged = [];
+  let orgs = {};
+  const adm = {
+    orgs: () => orgs, saveOrgs: (o) => { orgs = o; }, salt: () => 's',
+    hash: (salt, pw) => crypto.createHash('sha256').update(salt + '|' + pw).digest('hex'),
+    sign: (body) => crypto.createHmac('sha256', 'k').update(body).digest('hex'), nowMs: () => 3e12,
+    log: (rows) => logged.push(...P(rows))
+  };
+  const writes = [];
+  const tips = [
+    { id: 1, status: ST.approved, category: 'ציוד', title: 'יתדות ארוכות', text: 'טקסט ארוך מספיק', author: '', submitted: '', approved: 'x', mergedInto: '', similar: '', clientId: 'c1' },
+    { id: 2, status: ST.merged, category: 'ציוד', title: 'יתדות לחול', text: 'טקסט ארוך מספיק', author: '', submitted: '', approved: '', mergedInto: 1, similar: '', clientId: 'c2' }];
+  const comments = [{ id: 1, tipId: 1, status: ST.approved, text: 'מסכים', author: '', submitted: '', approved: 'x', clientId: 'k1' }];
+  const gear = [{ id: 1, status: ST.approved, section: 'ביגוד', name: 'כובע', tags: '', note: '', submitted: '', approved: 'x', clientId: 's1' }];
+  const tour = P(ctx.tourSeedRows_()).map((r, i) => ({ _row: i + 2, tour: r[0], step: r[1], key: r[2], title: r[3], text: r[4] }));
+  tour[2].title = 'נערך ביד';
+  const ts = {
+    tips: () => tips, comments: () => comments, gear: () => gear, tour: () => tour,
+    updateTip: (r) => writes.push(['tip', r.id]), updateComment: (r) => writes.push(['comment', r.id]),
+    updateGear: (r) => writes.push(['gear', r.id]), updateTour: (r) => writes.push(['tour', r.key]),
+    now: () => new Date(Date.UTC(2026, 9, 1, 9, 0))
+  };
+  const acts = [{ id: 1, status: AST.active, owner: 'Levi', topic: 'ציור בחול', host: '', description: '', start: '2026-10-07T10:00',
+    end: '2026-10-07T11:00', tag: 'ילדים', ageFrom: 4, ageTo: 9, capacity: 10, required: '', suggested: '', created: '', updated: '', clientId: 'a1' }];
+  const joins = [{ actId: 1, family: 'Cohen', count: 3, updated: '' }];
+  const as = { acts: () => acts, joins: () => joins, updateAct: (r) => writes.push(['activity', r.id]), now: () => new Date(Date.UTC(2026, 9, 1, 9, 0)) };
+  ctx.setAdminPassword_(adm, 'יאיר', 'password-1');
+  const tok = ctx.adminLogin_({ name: 'יאיר', password: 'password-1' }, adm).token;
+  const A = (req) => P(ctx.route(Object.assign({ token: tok }, req), null, ts, as, adm));
+  const bad = (req, code) => assert.strictEqual(A(Object.assign({ action: 'adminUpdate' }, req)).error, code, JSON.stringify(req));
+
+  // no token: nothing read, nothing written
+  assert.strictEqual(P(ctx.route({ action: 'adminList', kind: 'tip' }, null, ts, as, adm)).error, 'auth');
+  assert.strictEqual(P(ctx.route({ action: 'adminUpdate', kind: 'tip', id: 1, status: 'hidden' }, null, ts, as, adm)).error, 'auth');
+  assert.strictEqual(A({ action: 'adminList', kind: 'nope' }).error, 'bad_request');
+  assert.strictEqual(writes.length, 0);
+
+  // lists: every status, as keys; the merge target; an activity's taken places; tour texts with the built-in ones
+  let l = A({ action: 'adminList', kind: 'tip' });
+  assert.deepStrictEqual(l.items.map(t => [t.id, t.status, t.mergedInto]), [[2, 'merged', 1], [1, 'approved', null]]);
+  assert.deepStrictEqual(l.statuses, ['approved', 'hidden', 'rejected', 'pending']);
+  assert.ok(!JSON.stringify(l).includes('clientId'), 'client ids leaked');
+  assert.deepStrictEqual(A({ action: 'adminList', kind: 'comment' }).items.map(c => [c.id, c.tipTitle]), [[1, 'יתדות ארוכות']]);
+  assert.deepStrictEqual(A({ action: 'adminList', kind: 'gear' }).items.map(g => g.name), ['כובע']);
+  l = A({ action: 'adminList', kind: 'activity' });
+  assert.deepStrictEqual([l.items[0].status, l.items[0].taken, l.items[0].ageFrom], ['active', 3, 4]);
+  assert.deepStrictEqual(l.trip, { from: '2026-10-06', to: '2026-10-13' });
+  l = A({ action: 'adminList', kind: 'tour' });
+  const texts = P(ctx.TOUR_TEXTS_);
+  assert.strictEqual(l.items.length, texts.length);
+  assert.deepStrictEqual([l.items[2].id, l.items[2].title, l.items[2].defTitle], [texts[2].tour + '/' + texts[2].key, 'נערך ביד', texts[2].title]);
+  assert.strictEqual(l.items[0].step, 1); assert.strictEqual(l.items[0].tourName, 'פתיחה');
+
+  // hide a tip, then restore it: off the public list and back, two logged status changes
+  let r = A({ action: 'adminUpdate', kind: 'tip', id: 1, status: 'hidden' });
+  assert.deepStrictEqual(r, { ok: true, id: 1, saved: true, status: 'hidden' });
+  assert.ok(!ctx.tipsPublic_(ts).tips.some(t => t.id === 1));
+  r = A({ action: 'adminUpdate', kind: 'tip', id: 1, status: 'hidden' });                // retried: nothing
+  assert.strictEqual(r.saved, false); assert.strictEqual(writes.length, 1);
+  r = A({ action: 'adminUpdate', kind: 'tip', id: 1, status: 'approved', fields: { title: 'יתדות ארוכות מאוד' } });
+  assert.ok(r.saved && ctx.tipsPublic_(ts).tips.some(t => t.title === 'יתדות ארוכות מאוד'));
+  assert.strictEqual(tips[0].approved, 'x', 'an earlier approval stamp stays');
+  assert.deepStrictEqual(logged.map(x => x.slice(2, 7)), [
+    ['tip', 1, 'status', ST.approved, ST.hidden],
+    ['tip', 1, 'title', 'יתדות ארוכות', 'יתדות ארוכות מאוד'], ['tip', 1, 'status', ST.hidden, ST.approved]]);
+  // a merged tip set back to approved loses its merge target; edits without a status keep the status
+  A({ action: 'adminUpdate', kind: 'tip', id: 2, status: 'approved' });
+  assert.deepStrictEqual([tips[1].status, tips[1].mergedInto], [ST.approved, '']);
+  assert.ok(ctx.isDate_(tips[1].approved));
+  A({ action: 'adminUpdate', kind: 'comment', id: 1, fields: { text: 'מסכים מאוד' } });
+  assert.deepStrictEqual([comments[0].text, comments[0].status], ['מסכים מאוד', ST.approved]);
+  A({ action: 'adminUpdate', kind: 'gear', id: 1, status: 'hidden', fields: { note: 'רחב' } });
+  assert.ok(!ctx.gearPublic_(ts).items.some(g => g.id === 1));
+
+  bad({ kind: 'tip', id: 1, status: 'merged' }, 'bad_status');
+  bad({ kind: 'comment', id: 1, status: 'active' }, 'bad_status');
+  bad({ kind: 'tip', id: 1, fields: { title: 'x' } }, 'too_short');
+  bad({ kind: 'gear', id: 9, status: 'hidden' }, 'not_found');
+  bad({ kind: 'tour', id: 'welcome/hello', status: 'hidden' }, 'bad_status');
+
+  // fix an activity's time: still inside the trip and after its start; stamped as updated; public at once
+  const w0 = writes.length;
+  r = A({ action: 'adminUpdate', kind: 'activity', id: 1, fields: { start: '2026-10-08T16:00', end: '2026-10-08T17:30' } });
+  assert.ok(r.saved); assert.strictEqual(writes.length, w0 + 1);
+  assert.ok(ctx.isDate_(acts[0].updated));
+  assert.strictEqual(ctx.activitiesPublic_(as).activities[0].start, '2026-10-08T16:00');
+  r = A({ action: 'adminUpdate', kind: 'activity', id: 1, fields: { start: '2026-10-08T16:00', end: '2026-10-08T17:30' } });
+  assert.strictEqual(r.saved, false); assert.strictEqual(writes.length, w0 + 1);              // a retry writes nothing
+  bad({ kind: 'activity', id: 1, fields: { end: '2026-10-08T15:00' } }, 'end_before_start');
+  bad({ kind: 'activity', id: 1, fields: { start: '2026-10-20T10:00' } }, 'bad_time');
+  bad({ kind: 'activity', id: 1, fields: { tag: 'כולם' } }, 'bad_tag');
+  bad({ kind: 'activity', id: 1, fields: { ageFrom: 10 } }, 'bad_age');                       // above ageTo 9
+  bad({ kind: 'activity', id: 1, fields: { capacity: 501 } }, 'bad_capacity');
+  bad({ kind: 'activity', id: 1, status: 'approved' }, 'bad_status');
+  assert.strictEqual(writes.length, w0 + 1);
+  // for everyone: the ages go; no limit; hidden then active again
+  A({ action: 'adminUpdate', kind: 'activity', id: 1, fields: { tag: 'לכולם', capacity: '' } });
+  assert.deepStrictEqual([acts[0].ageFrom, acts[0].ageTo, acts[0].capacity], ['', '', '']);
+  A({ action: 'adminUpdate', kind: 'activity', id: 1, status: 'hidden' });
+  assert.strictEqual(ctx.activitiesPublic_(as).activities.length, 0);
+  assert.deepStrictEqual(A({ action: 'adminUpdate', kind: 'activity', id: 1, status: 'active' }).status, 'active');
+  assert.strictEqual(acts[0].owner, 'Levi', 'the owner never changes');
+
+  // a tour bubble: title and text, blank lines kept, an empty cell falls back to the site's text
+  r = A({ action: 'adminUpdate', kind: 'tour', id: 'welcome/help', fields: { title: 'עזרה', text: 'שורה אחת' + NL + NL + '**שנייה**' } });
+  assert.ok(r.saved); assert.deepStrictEqual(writes[writes.length - 1], ['tour', 'help']);
+  let pub = P(ctx.tourPublic_(ts)).steps.find(s => s.key === 'help' && s.tour === 'welcome');
+  assert.deepStrictEqual(pub, { tour: 'welcome', key: 'help', title: 'עזרה', text: 'שורה אחת' + NL + NL + '**שנייה**' });
+  A({ action: 'adminUpdate', kind: 'tour', id: 'welcome/help', fields: { title: '' } });
+  pub = P(ctx.tourPublic_(ts)).steps.find(s => s.key === 'help' && s.tour === 'welcome');
+  assert.strictEqual(pub.title, undefined);
+  assert.deepStrictEqual(logged.filter(x => x[2] === 'tour').map(x => [x[3], x[4]]),
+    [['welcome/help', 'title'], ['welcome/help', 'text'], ['welcome/help', 'title']]);
+  bad({ kind: 'tour', id: 'welcome/nope', fields: { title: 'x' } }, 'not_found');
+  bad({ kind: 'tour', id: 'welcome/help', fields: { text: 'y'.repeat(2001) } }, 'too_long');
+}
+console.log('admin edit tests passed');

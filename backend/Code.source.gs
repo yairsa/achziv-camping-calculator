@@ -53,7 +53,7 @@ function doPost(e) {
     }
     if (req && /^admin/.test(req.action)) {
       var ares = route(req, sheetStore_(), tipsStore_(), activitiesStore_(), adminStore_());
-      if (ares.ok && req.action !== 'adminLogin' && req.action !== 'adminMe' && req.action !== 'adminQueue') {
+      if (ares.ok && !ADMIN_READS[req.action]) {
         CacheService.getScriptCache().removeAll([TIPS_CACHE, GEAR_CACHE, ACTS_CACHE, TOUR_CACHE]);   // the site shows it at once
       }
       return json_(ares);
@@ -95,6 +95,8 @@ function route(req, store, tstore, astore, adm) {
       case 'adminMe': return adminMe_(req, adm);
       case 'adminQueue': return adminQueue_(req, tstore, adm);
       case 'adminDecide': return adminDecide_(req, tstore, adm);
+      case 'adminList': return adminList_(req, tstore, astore, adm);
+      case 'adminUpdate': return adminUpdate_(req, tstore, astore, adm);
       default: return { ok: false, error: 'bad_request' };
     }
   } catch (x) {
@@ -929,6 +931,7 @@ function adminMe_(req, adm) { return { ok: true, name: adminAuth_(req, adm).name
 // ---------- managing page: the waiting list and one item's decision (docs/admin-plan.md §4.2) ----------
 // Tips, comments and suggested gear items waiting for approval. Activities need no approval (activities-plan §2).
 var ADMIN_KINDS = { tip: 1, comment: 1, gear: 1 };
+var ADMIN_READS = { adminLogin: 1, adminMe: 1, adminQueue: 1, adminList: 1 };   // no public cache to clear
 var ADMIN_DECISIONS = { tip: ['approved', 'rejected', 'merged'], comment: ['approved', 'rejected'], gear: ['approved', 'rejected'] };
 var GEAR_LIMITS = { tags: 100, note: 200 };
 var ADMIN_LOG_TAB = 'יומן ניהול';
@@ -1005,18 +1008,161 @@ function adminDecide_(req, ts, adm) {
     next.mergedInto = target || '';
   }
   if (req.status === 'approved' && !row.approved) next.approved = ts.now();
-  var log = [], now = ts.now();
+  adminWrite_(adm, who, kind, id, row, next, ts.now(), adminSaver_(ts, null, kind));
+  if (kind === 'tip' && req.status === 'merged') housekeep_(ts);     // the merge becomes a comment on the target, once
+  return { ok: true, id: id, status: row.status };
+}
+// Sets next's values on row; saves and logs only when something changed (one log row per changed field).
+// Keys in `quiet` (a stamp of when) are written but not logged. Returns whether anything was saved.
+function adminWrite_(adm, who, kind, id, row, next, now, save, quiet) {
+  var log = [], changed = false;
+  quiet = quiet || { approved: 1, updated: 1 };
   Object.keys(next).forEach(function (k) {
     var old = row[k] == null ? '' : row[k];
     if (String(old) === String(next[k])) return;
-    if (k !== 'approved') log.push([now, who.name, kind, id, k, logCell_(old), logCell_(next[k])]);
-    row[k] = next[k];
+    if (!quiet[k]) log.push([now, who.name, kind, id, k, logCell_(old), logCell_(next[k])]);
+    row[k] = next[k]; changed = true;
   });
-  if (!log.length && !next.approved) return { ok: true, id: id, status: row.status };
-  (kind === 'tip' ? ts.updateTip : kind === 'comment' ? ts.updateComment : ts.updateGear)(row);
+  if (!changed) return false;
+  save(row);
   if (log.length && adm.log) adm.log(log);
-  if (kind === 'tip' && req.status === 'merged') housekeep_(ts);     // the merge becomes a comment on the target, once
-  return { ok: true, id: id, status: row.status };
+  return true;
+}
+function adminSaver_(ts, as, kind) {
+  return { tip: ts && ts.updateTip, comment: ts && ts.updateComment, gear: ts && ts.updateGear,
+           tour: ts && ts.updateTour, activity: as && as.updateAct }[kind];
+}
+
+// ---------- managing page: edit anything current (docs/admin-plan.md §4.3) ----------
+// The statuses an organizer may set from the edit screen, as keys. A merge is decided from the waiting list only.
+var ADMIN_EDIT = { tip: ['approved', 'hidden', 'rejected', 'pending'], comment: ['approved', 'hidden', 'rejected', 'pending'],
+                   gear: ['approved', 'hidden', 'rejected', 'pending'], activity: ['active', 'hidden', 'cancelled'], tour: [] };
+var TOUR_TITLE_MAX = 200;
+
+function keyOf_(map, value) {
+  value = String(value == null ? '' : value).trim();
+  return Object.keys(map).filter(function (k) { return map[k] === value; })[0] || value;
+}
+function tourId_(tour, key) { return tour + '/' + key; }
+
+// Every row of one kind, whatever its status, newest first (tour texts in the site's order).
+function adminList_(req, ts, as, adm) {
+  adminAuth_(req, adm);
+  var kind = req.kind, items, newest = function (a, b) { return b.id - a.id; };
+  if (!ADMIN_EDIT[kind]) fail_('bad_request');
+  if (kind === 'tip') {
+    items = ts.tips().map(function (t) {
+      return { id: +t.id, status: keyOf_(ST, t.status), category: String(t.category), title: unguard_(t.title),
+               text: unguard_(t.text), author: unguard_(t.author), mergedInto: tipNumber_(t.mergedInto) || null,
+               submitted: whenText_(t.submitted), ms: when_(t.submitted) };
+    }).sort(newest);
+  } else if (kind === 'comment') {
+    var titles = {};
+    ts.tips().forEach(function (t) { titles[+t.id] = unguard_(t.title); });
+    items = ts.comments().map(function (c) {
+      var k = tipNumber_(c.tipId);
+      return { id: +c.id, status: keyOf_(ST, c.status), tipId: k, tipTitle: titles[k] || '', text: unguard_(c.text),
+               author: unguard_(c.author), submitted: whenText_(c.submitted), ms: when_(c.submitted) };
+    }).sort(newest);
+  } else if (kind === 'gear') {
+    items = gearRows_(ts).map(function (g) {
+      return { id: +g.id, status: keyOf_(ST, g.status), section: String(g.section), name: unguard_(g.name),
+               tags: String(g.tags || ''), note: unguard_(g.note), submitted: whenText_(g.submitted), ms: when_(g.submitted) };
+    }).sort(newest);
+  } else if (kind === 'activity') {
+    items = as.acts().map(function (a) {
+      return { id: +a.id, status: keyOf_(AST, a.status), owner: unguard_(a.owner), topic: unguard_(a.topic),
+               host: unguard_(a.host), description: unguard_(a.description), start: String(a.start), end: String(a.end),
+               tag: String(a.tag), ageFrom: a.ageFrom === '' ? null : +a.ageFrom, ageTo: a.ageTo === '' ? null : +a.ageTo,
+               capacity: +a.capacity || 0, required: unguard_(a.required), suggested: unguard_(a.suggested),
+               taken: actTaken_(as, +a.id) };
+    }).sort(function (x, y) { return x.start < y.start ? -1 : x.start > y.start ? 1 : x.id - y.id; });
+  } else {
+    var byName = tourIds_(), rows = {};
+    (ts.tour ? ts.tour() : []).forEach(function (r) {
+      var id = byName[String(r.tour).trim()];
+      if (id) rows[tourId_(id, String(r.key).trim())] = rows[tourId_(id, String(r.key).trim())] || r;
+    });
+    var n = {};
+    items = TOUR_TEXTS_.map(function (d) {
+      var r = rows[tourId_(d.tour, d.key)] || {};
+      n[d.tour] = (n[d.tour] || 0) + 1;
+      return { id: tourId_(d.tour, d.key), tour: d.tour, tourName: TOUR_NAMES_[d.tour], step: n[d.tour],
+               title: unguard_(r.title), text: unguard_(r.text), defTitle: d.title, defText: d.text };
+    });
+  }
+  return { ok: true, kind: kind, items: items, statuses: ADMIN_EDIT[kind], categories: TIP_CATEGORIES,
+           sections: GEAR_SECTIONS_, tags: ACT_TAGS, trip: TRIP };
+}
+
+// An activity's fields, checked like the family's own form; the result is checked as a whole (end after start,
+// ages only for kids). Only the fields sent change.
+function adminActFields_(f, row) {
+  f = f || {};
+  var out = {};
+  function has(k) { return Object.prototype.hasOwnProperty.call(f, k) && f[k] != null; }
+  if (has('topic')) out.topic = tipText_(String(f.topic).replace(/\n/g, ' '), 3, ACT_LIMITS.topic);
+  if (has('host')) out.host = tipText_(String(f.host).replace(/\n/g, ' '), 0, ACT_LIMITS.host);
+  if (has('description')) out.description = tipText_(f.description, 0, ACT_LIMITS.description);
+  if (has('start')) out.start = actTime_(f.start);
+  if (has('end')) out.end = actTime_(f.end);
+  if (has('tag')) { if (ACT_TAGS.indexOf(String(f.tag)) < 0) fail_('bad_tag'); out.tag = String(f.tag); }
+  if (has('ageFrom')) out.ageFrom = actAge_(f.ageFrom);
+  if (has('ageTo')) out.ageTo = actAge_(f.ageTo);
+  if (has('capacity')) {
+    var cap = f.capacity === '' ? 0 : Number(f.capacity);
+    if (!(cap >= 0 && cap <= ACT_LIMITS.capacity) || cap !== Math.floor(cap)) fail_('bad_capacity');
+    out.capacity = cap || '';
+  }
+  if (has('required')) out.required = actGear_(f.required);
+  if (has('suggested')) out.suggested = actGear_(f.suggested);
+  var v = function (k) { return Object.prototype.hasOwnProperty.call(out, k) ? out[k] : row[k]; };
+  if (String(v('end')) <= String(v('start'))) fail_('end_before_start');
+  if (v('tag') !== 'ילדים') { if (v('ageFrom') !== '') out.ageFrom = ''; if (v('ageTo') !== '') out.ageTo = ''; }
+  else if (v('ageFrom') !== '' && v('ageTo') !== '' && +v('ageFrom') > +v('ageTo')) fail_('bad_age');
+  return out;
+}
+
+// Edit one current row of any kind, and optionally set its status. Repeatable, logged, like adminDecide.
+function adminUpdate_(req, ts, as, adm) {
+  var who = adminAuth_(req, adm), kind = req.kind, status = req.status;
+  if (!ADMIN_EDIT[kind]) fail_('bad_request');
+  if (status != null && status !== '' && ADMIN_EDIT[kind].indexOf(status) < 0) fail_('bad_status');
+  var row, id, next, now = ts ? ts.now() : as.now();
+  if (kind === 'tour') {
+    var byName = tourIds_();
+    id = String(req.id || '');
+    row = (ts.tour ? ts.tour() : []).filter(function (r) {
+      return tourId_(byName[String(r.tour).trim()], String(r.key).trim()) === id;
+    })[0];
+    if (!row) fail_('not_found');
+    var f = req.fields || {};
+    next = {};
+    if (f.title != null) next.title = tipText_(String(f.title).replace(/\n/g, ' '), 0, TOUR_TITLE_MAX);
+    if (f.text != null) next.text = tipText_(f.text, 0, TOUR_TEXT_MAX);
+  } else if (kind === 'activity') {
+    row = findAct_(as, req.id);
+    if (!row) fail_('not_found');
+    id = +row.id;
+    next = adminActFields_(req.fields, row);
+    if (status) next.status = AST[status];
+  } else {
+    id = tipNumber_(req.id);
+    row = adminRows_(ts, kind).filter(function (r) { return +r.id === id; })[0];
+    if (!row) fail_('not_found');
+    next = adminFields_(kind, req.fields);
+    if (status) {
+      next.status = ST[status];
+      if (kind === 'tip') next.mergedInto = '';
+      if (status === 'approved' && !row.approved) next.approved = now;
+    }
+  }
+  var save = adminSaver_(ts, as, kind);
+  var saved = adminWrite_(adm, who, kind, id, row, next, now, function (r) {
+    if (kind === 'activity') r.updated = now;                  // stamped only when something changed
+    save(r);
+  });
+  return { ok: true, id: id, saved: saved, status: kind === 'tour' ? '' : keyOf_(kind === 'activity' ? AST : ST, row.status) };
 }
 function logCell_(v) {
   v = isDate_(v) ? v : String(v == null ? '' : v);
@@ -1127,8 +1273,8 @@ function tipsStore_() {
   function readTour() {
     var sh = tourSheet(), n = sh.getLastRow() - 1;
     var v = n > 0 ? sh.getRange(2, 1, n, TOUR_HEAD.length).getValues() : [];
-    return v.map(function (c) {
-      var r = {};
+    return v.map(function (c, i) {
+      var r = { _row: i + 2 };
       Object.keys(TOUR_COL).forEach(function (k) { r[k] = c[TOUR_COL[k]]; });
       return r;
     });
@@ -1165,6 +1311,10 @@ function tipsStore_() {
         tourRows = readTour();
       }
       return tourRows;
+    },
+    // The managing page edits כותרת and טקסט only; the cells stay plain text.
+    updateTour: function (r) {
+      tourSheet().getRange(r._row, TOUR_COL.title + 1, 1, 2).setNumberFormat('@').setValues([[r.title, r.text]]);
     },
     now: function () { return new Date(); }       // a real date: the sheet shows it in its own (day-first) locale
   };

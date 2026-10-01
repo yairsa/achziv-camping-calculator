@@ -54,7 +54,9 @@
 - [x] Gate: all gates green; stamp
 
 #### 4.3 Edit anything current
-- [ ] Actions `adminList {kind}` / `adminUpdate {kind, id, fields, status}` for tips, comments, gear, activities, tour texts; same validation, log and cache rules
+- [x] Actions `adminList {kind}` / `adminUpdate {kind, id, fields, status}` for tips, comments, gear, activities, tour texts; same validation, log and cache rules
+  - done: `kind` is `tip` · `comment` · `gear` · `activity` · `tour`. Statuses go both ways as keys (`ADMIN_EDIT`): tip/comment/gear `approved` · `hidden` · `rejected` · `pending` (a merge only from the waiting list; a merged tip set to anything else loses its `mergedInto`); activity `active` · `hidden` · `cancelled`; tour none. No status sent = status kept. The reply carries `saved: false` when nothing changed (a retry). `adminWrite_` is now shared with `adminDecide_`: it sets, saves and logs only changed fields. An activity is checked as a whole after the edit (end after start, inside the trip, ages only for ילדים, which are cleared otherwise), `updated` stamped only when something changed, the owner never editable. A tour row's id is `tour/key`; title ≤200, text ≤2000, empty allowed (the site falls back to its own text); the list gives the built-in text beside the sheet's (`defTitle`, `defText`). New store write `updateTour` (title + text cells, plain text). `adminList` is in `ADMIN_READS`, so it clears no cache
+  - 5 mutations (merge target kept, end-before-start, status check, the activity stamp, write on no change) all turned the tests red
 - [ ] `admin.html`: a tab per kind with search; the edit screen per kind (activities: every field incl. times inside the trip, status פעיל / הוסתר; tour: title + text, preview rendered with tour.js's format)
 - [ ] Tests: backend per kind + e2e: hide and restore a tip, fix an activity's time, edit a tour bubble and see it on the public page
 - [ ] Gate: all gates green
