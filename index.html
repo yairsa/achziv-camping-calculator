@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=d3c4871d">
+  <link rel="stylesheet" href="style.css?v=e6fdca40">
 </head>
 <body>
   <a class="skip" href="#main">דלג לתוכן</a>
@@ -17,6 +17,15 @@
     <h1>פארק אכזיב - אוקטובר 2026</h1>
     <p class="sub">קמפינג קבוצתי · חניון לילה גן לאומי אכזיב — <strong>החניון הצפוני</strong> · 06/10 עד 13/10/2026</p>
     <div class="top-tools">
+      <!-- navigation to the campsite (coordinates from the park's listing on outdooractive.co.il) -->
+      <a id="nav-waze" class="btn-secondary nav-btn" href="https://waze.com/ul?ll=33.048442,35.103583&amp;navigate=yes" target="_blank" rel="noopener" aria-label="ניווט לחניון ב-Waze">
+        <svg class="nav-logo" viewBox="0 0 24 24" aria-hidden="true"><path fill="#33ccff" stroke="#0b1d26" stroke-width="1.2" d="M12 3c-4.7 0-8.3 3.3-8.3 7.6 0 1.8-.5 2.9-1.6 3.6.9 1.6 2.4 2.6 4.3 3.1a2 2 0 0 0 3.8.7h3.6a2 2 0 0 0 3.8-.6c2.6-1 4.5-3.6 4.5-6.6C22.1 6.4 17.6 3 12 3z"/><circle cx="9.6" cy="9.4" r="1" fill="#0b1d26"/><circle cx="14.8" cy="9.4" r="1" fill="#0b1d26"/><path d="M9 12.4c1.6 1.8 4.6 1.8 6.2 0" fill="none" stroke="#0b1d26" stroke-width="1.2" stroke-linecap="round"/></svg>
+        Waze
+      </a>
+      <a id="nav-gmaps" class="btn-secondary nav-btn" href="https://www.google.com/maps/dir/?api=1&amp;destination=33.048442,35.103583" target="_blank" rel="noopener" aria-label="ניווט לחניון ב-Google Maps">
+        <svg class="nav-logo" viewBox="0 0 24 24" aria-hidden="true"><path fill="#ea4335" d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7z"/><path fill="#c5221f" d="M12 2a7 7 0 0 1 7 7c0 5.2-7 13-7 13V2z" opacity=".35"/><circle cx="12" cy="9" r="2.6" fill="#fff"/></svg>
+        Google Maps
+      </a>
       <button type="button" id="share-btn" class="btn-secondary" aria-controls="share-menu" aria-expanded="false">שיתוף עם חברים</button>
       <button type="button" id="tour-help" class="btn-secondary" aria-label="הדרכה: סיור באתר">?</button>
       <div id="share-menu" class="share-menu" hidden></div>
