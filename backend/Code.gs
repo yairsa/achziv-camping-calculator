@@ -898,6 +898,15 @@ var TOUR_TEXTS_ = [
     text: '\u05d9\u05e9 \u05dc\u05db\u05dd \u05d8\u05d9\u05e4? \u05db\u05ea\u05d1\u05d5 \u05d0\u05d5\u05ea\u05d5 \u05db\u05d0\u05df. \u05d4\u05d5\u05d0 \u05d9\u05d5\u05e4\u05d9\u05e2 \u05d1\u05d0\u05ea\u05e8 \u05d0\u05d7\u05e8\u05d9 \u05d0\u05d9\u05e9\u05d5\u05e8 \u05e9\u05dc \u05d4\u05de\u05d0\u05e8\u05d2\u05df.' }
 ];
 
+// The text format as HTML: escaped, a paragraph per blank line, **bold**, single line breaks kept. Used by tour.js
+// for the bubbles and by admin.js for the preview, so both show the same thing.
+function tourRender_(text) {
+  var esc = function (x) { return x.replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  return String(text == null ? '' : text).replace(/\r/g, '').trim().split(/\n\s*\n/).map(function (p) {
+    return '<p>' + esc(p.trim()).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>') + '</p>';
+  }).join('');
+}
+
 var TOUR_TAB = '\u05d4\u05d3\u05e8\u05db\u05d4';
 var TOUR_HEAD = ['\u05e1\u05d9\u05d5\u05e8', '\u05de\u05e1\u05e4\u05e8 \u05e6\u05e2\u05d3', '\u05de\u05e4\u05ea\u05d7', '\u05db\u05d5\u05ea\u05e8\u05ea', '\u05d8\u05e7\u05e1\u05d8'];
 var TOUR_COL = { tour: 0, step: 1, key: 2, title: 3, text: 4 };

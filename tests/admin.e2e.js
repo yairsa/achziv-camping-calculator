@@ -23,11 +23,16 @@ ctx.setAdminPassword_(adm, 'יאיר', 'camp-password-1');
 
 const at = (d, h) => new Date(Date.UTC(2026, 8, d, h));
 const tips = [], comments = [], gear = [];
+const tour = P(ctx.tourSeedRows_()).map((r, i) => ({ _row: i + 2, tour: r[0], step: r[1], key: r[2], title: r[3], text: r[4] }));
 const ts = {
-  tips: () => tips, comments: () => comments, gear: () => gear,
+  tips: () => tips, comments: () => comments, gear: () => gear, tour: () => tour,
   addTip: (r) => tips.push(r), addComment: (r) => comments.push(r), addGear: (r) => gear.push(r),
-  updateTip() {}, updateComment() {}, updateGear() {}, now: () => new Date()
+  updateTip() {}, updateComment() {}, updateGear() {}, updateTour() {}, now: () => new Date()
 };
+const acts = [{ id: 1, status: 'פעיל', owner: 'משפחת לוי', topic: 'ציור בחול', host: '', description: 'ציור ופיסול בחול הרטוב',
+  start: '2026-10-07T10:00', end: '2026-10-07T11:00', tag: 'ילדים', ageFrom: 4, ageTo: 9, capacity: 10, required: '', suggested: '',
+  created: '', updated: '', clientId: 'a1' }];
+const as = { acts: () => acts, joins: () => [], addAct() {}, updateAct() {}, addJoin() {}, updateJoin() {}, now: () => new Date() };
 const tip = (id, status, category, title, text, extra) => tips.push(Object.assign({ id, status, category, title, text, author: '',
   submitted: at(29, id), approved: status === ST.approved ? 'x' : '', mergedInto: '', similar: '', clientId: 'c' + id }, extra));
 tip(1, ST.approved, 'אוהלים ולינה', 'יתדות ארוכות לחול', 'היתדות הרגילות לא מחזיקות בחול.');
@@ -50,7 +55,7 @@ const calls = [];
     const body = JSON.parse(route.request().postData());
     calls.push(body.action);
     if (delay) await new Promise(r => setTimeout(r, delay));
-    const res = oldBackend ? { ok: false, error: 'bad_request' } : P(ctx.route(body, null, ts, null, adm));
+    const res = oldBackend ? { ok: false, error: 'bad_request' } : P(ctx.route(body, null, ts, as, adm));
     if (dropNext > 0) { dropNext--; return route.fulfill({ status: 404, contentType: 'text/html', body: '<html>not found</html>' }); }
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(res) });
   });
@@ -165,13 +170,120 @@ const calls = [];
   await page.waitForSelector('#adm-login:not([hidden])');
   assert.ok((await text('#login-msg')).includes('פגה'));
 
-  // ---- logout leaves nothing behind ----
   await page.fill('#login-name', 'יאיר'); await page.fill('#login-pw', 'camp-password-2');
   await page.click('#login-go');
   await page.waitForSelector('#q-tip-4');
+
+  // ---- §4.3 edit anything: a tab per kind; hide a tip and restore it ----
+  const rows = () => page.locator('#list-items .adm-card .adm-title').allInnerTexts();
+  await page.click('#adm-nav [data-view="tip"]');
+  await page.waitForSelector('#adm-list:not([hidden]) #l-tip-1');
+  assert.strictEqual(await text('#list-title'), 'טיפים');
+  assert.strictEqual(await page.getAttribute('#adm-nav [data-view="tip"]', 'aria-pressed'), 'true');
+  await page.fill('#list-q', 'מדוזות');
+  assert.deepStrictEqual(await rows(), ['מדוזות בחוף']);
+  await page.fill('#list-q', '');
+  await noHScroll('tip list');
+  await page.click('#l-tip-1');
+  assert.ok(await page.isVisible('#adm-edit'));
+  assert.strictEqual(await page.inputValue('#f-title'), 'יתדות ארוכות לחול');
+  assert.strictEqual(await page.inputValue('#e-status'), 'approved');
+  await page.selectOption('#e-status', 'hidden');
+  await noHScroll('tip edit');
+  delay = 1500;                                       // a slow server: the list shows the change before it refreshes
+  await page.click('#edit-save');
+  await page.waitForFunction(() => /טיפ 1 נשמר/.test(document.getElementById('list-msg').textContent));
+  assert.ok((await text('#l-tip-1')).includes('הוסתר'), 'the list does not show the new status at once');
+  delay = 0;
+  await page.waitForFunction(() => !document.getElementById('list-refresh').disabled);
+  assert.ok(!P(ctx.tipsPublic_(ts)).tips.some(t => t.id === 1), 'the hidden tip is still public');
+  assert.ok((await page.locator('#list-filter button').allInnerTexts()).some(t => /^הוסתר/.test(t)));
+  await page.click('#list-filter [data-filter="hidden"]');
+  assert.deepStrictEqual(await rows(), ['יתדות ארוכות לחול']);
+  await page.click('#l-tip-1');
+  await page.selectOption('#e-status', 'approved');
+  await page.click('#edit-save');
+  await page.waitForFunction(() => /טיפ 1 נשמר/.test(document.getElementById('list-msg').textContent));
+  assert.ok(P(ctx.tipsPublic_(ts)).tips.some(t => t.id === 1), 'the restored tip is not public');
+  assert.deepStrictEqual(logged.filter(l => l[2] === 'tip' && l[3] === 1).map(l => l[6]), [ST.hidden, ST.approved]);
+
+  // ---- the back button closes the edit screen; a merged tip's status reads "no change" ----
+  await page.click('#l-tip-3');
+  assert.strictEqual(await page.inputValue('#e-status'), '');
+  assert.ok((await text('#edit-meta')).includes('מוזג לטיפ 1'));
+  await page.goBack();
+  await page.waitForSelector('#adm-list:not([hidden])');
+
+  // ---- fix an activity's time; a wrong time keeps the screen open with the edits ----
+  await page.click('#adm-nav [data-view="activity"]');
+  await page.waitForSelector('#l-activity-1');
+  assert.ok((await text('#l-activity-1')).includes('ד׳ 07/10, 10:00 עד 11:00'));
+  await page.click('#l-activity-1');
+  assert.ok(await page.isVisible('#f-ages'));
+  assert.ok((await text('#edit-meta')).includes('משפחת לוי'));
+  await page.selectOption('#f-end-h', '09');
+  await page.click('#edit-save');
+  await page.waitForFunction(() => /אחרי ההתחלה/.test(document.getElementById('edit-msg').textContent));
+  assert.ok(await page.isVisible('#adm-edit'));
+  assert.strictEqual(acts[0].end, '2026-10-07T11:00');
+  await page.selectOption('#f-start-day', '2026-10-08'); await page.selectOption('#f-start-h', '16'); await page.selectOption('#f-start-m', '30');
+  await page.selectOption('#f-end-day', '2026-10-08'); await page.selectOption('#f-end-h', '18');
+  await noHScroll('activity edit');
+  await page.click('#edit-save');
+  await page.waitForFunction(() => /פעילות 1 נשמר/.test(document.getElementById('list-msg').textContent));
+  const act = P(ctx.activitiesPublic_(as)).activities[0];
+  assert.deepStrictEqual([act.start, act.end, act.ageFrom], ['2026-10-08T16:30', '2026-10-08T18:00', 4]);
+  assert.ok((await text('#l-activity-1')).includes('ה׳ 08/10, 16:30 עד 18:00'));
+  // for everyone: the ages are hidden and cleared
+  await page.click('#l-activity-1');
+  await page.selectOption('#f-tag', 'לכולם');
+  assert.ok(await page.isHidden('#f-ages'));
+  await page.click('#edit-save');
+  await page.waitForFunction(() => /פעילות 1 נשמר/.test(document.getElementById('list-msg').textContent));
+  assert.deepStrictEqual([acts[0].tag, acts[0].ageFrom, acts[0].ageTo], ['לכולם', '', '']);
+
+  // ---- edit a tour bubble: the preview uses the site's format, then the public page shows it ----
+  const NL = String.fromCharCode(10);
+  await page.click('#adm-nav [data-view="tour"]');
+  await page.waitForSelector('#l-tour-welcome-hello');
+  await page.click('#l-tour-welcome-hello');
+  assert.ok(await page.isVisible('#edit-preview-wrap'));
+  assert.strictEqual(await page.isVisible('#e-status'), false, 'a tour text has no status');
+  await page.fill('#f-title', 'שלום מדף הניהול');
+  await page.fill('#f-text', 'פסקה אחת' + NL + NL + '**מודגש** כאן');
+  assert.strictEqual(await page.innerHTML('#edit-preview'), '<h3>שלום מדף הניהול</h3><p>פסקה אחת</p><p><strong>מודגש</strong> כאן</p>');
+  await page.fill('#f-title', '');
+  assert.ok((await page.innerHTML('#edit-preview')).startsWith('<h3>ברוכים הבאים!</h3>'), 'an empty title does not preview the built-in one');
+  await page.fill('#f-title', 'שלום מדף הניהול');
+  await noHScroll('tour edit');
+  await page.click('#edit-save');
+  await page.waitForFunction(() => /בועה נשמר/.test(document.getElementById('list-msg').textContent));
+  assert.deepStrictEqual([tour[0].title, tour[0].text], ['שלום מדף הניהול', 'פסקה אחת' + NL + NL + '**מודגש** כאן']);
+  assert.deepStrictEqual(await rows().then(r => r[0]), 'שלום מדף הניהול');
+  {
+    const pc = await browser.newContext({ viewport: { width: 360, height: 780 } });
+    const pub = await pc.newPage();
+    pub.on('pageerror', e => errors.push('public: ' + e));
+    await pub.route('https://fonts.googleapis.com/**', r => r.abort());
+    await pub.route('https://script.google.com/**', (route) => {
+      const body = JSON.parse(route.request().postData() || '{}');       // the summary is a GET
+      const res = body.action === 'tour' ? P(ctx.route(body, null, ts)) : { ok: false, error: 'server_error' };
+      route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(res) });
+    });
+    await pub.goto('file:///' + path.resolve(__dirname, '../index.html').replace(/\\/g, '/'));
+    await pub.waitForFunction(() => localStorage.getItem('achziv-tour-texts'), null, { timeout: 8000 });
+    await pub.keyboard.press('Escape');
+    await pub.click('#tour-help');
+    await pub.waitForSelector('.tour-bub:not([hidden])');
+    assert.strictEqual(await pub.innerText('#tour-title'), 'שלום מדף הניהול');
+    assert.strictEqual(await pub.innerHTML('#tour-text'), '<p>פסקה אחת</p><p><strong>מודגש</strong> כאן</p>');
+    await pc.close();
+  }
+
+  // ---- logout leaves nothing behind ----
   await page.click('#adm-logout');
   assert.ok(await page.isVisible('#adm-login'));
-  assert.strictEqual(await page.evaluate(() => localStorage.getItem('achziv-admin-token') || localStorage.getItem('achziv-admin-queue')), null);
+  assert.deepStrictEqual(await page.evaluate(() => Object.keys(localStorage).filter(k => /^achziv-admin/.test(k))), [], 'logout left data');
   await noHScroll('login');
 
   assert.deepStrictEqual(errors, []);

@@ -67,12 +67,6 @@
   }
   // plain text → HTML: everything escaped; a blank line starts a paragraph, a single line break stays, **...** is bold
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
-  function render(text) {
-    return String(text).replace(/\r/g, '').trim().split(/\n\s*\n/).map(function (p) {
-      return '<p>' + esc(p.trim()).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>') + '</p>';
-    }).join('');
-  }
-
   function seen() { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } }
   function markSeen(name) {
     var s = seen(); s[name] = 1;
@@ -123,7 +117,7 @@
     var s = steps[i];
     $('tour-count').textContent = (i + 1) + ' מתוך ' + steps.length;
     $('tour-title').textContent = s.title;
-    $('tour-text').innerHTML = render(s.text);
+    $('tour-text').innerHTML = tourRender_(s.text);   // tour-texts.js
     $('tour-next').textContent = i === steps.length - 1 ? 'סיום' : 'הבא';
     $('tour-prev').hidden = i === 0;
     $('tour-skip').hidden = i === steps.length - 1;

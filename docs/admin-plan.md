@@ -2,7 +2,7 @@
 
 > **Open questions for Yair:** none. The decisions in §2 are derived; say if one is wrong.
 
-**Status:** §4.1 and §4.2 done 01/10/2026 (pushed, backend not deployed). Next: the first unticked box in §4.3.
+**Status:** §4.1, §4.2 and §4.3 done 01/10/2026 (pushed, backend not deployed). Next: the first unticked box in §4.4.
 
 ## 1. The brief (Yair, 01/10/2026)
 
@@ -57,9 +57,12 @@
 - [x] Actions `adminList {kind}` / `adminUpdate {kind, id, fields, status}` for tips, comments, gear, activities, tour texts; same validation, log and cache rules
   - done: `kind` is `tip` · `comment` · `gear` · `activity` · `tour`. Statuses go both ways as keys (`ADMIN_EDIT`): tip/comment/gear `approved` · `hidden` · `rejected` · `pending` (a merge only from the waiting list; a merged tip set to anything else loses its `mergedInto`); activity `active` · `hidden` · `cancelled`; tour none. No status sent = status kept. The reply carries `saved: false` when nothing changed (a retry). `adminWrite_` is now shared with `adminDecide_`: it sets, saves and logs only changed fields. An activity is checked as a whole after the edit (end after start, inside the trip, ages only for ילדים, which are cleared otherwise), `updated` stamped only when something changed, the owner never editable. A tour row's id is `tour/key`; title ≤200, text ≤2000, empty allowed (the site falls back to its own text); the list gives the built-in text beside the sheet's (`defTitle`, `defText`). New store write `updateTour` (title + text cells, plain text). `adminList` is in `ADMIN_READS`, so it clears no cache
   - 5 mutations (merge target kept, end-before-start, status check, the activity stamp, write on no change) all turned the tests red
-- [ ] `admin.html`: a tab per kind with search; the edit screen per kind (activities: every field incl. times inside the trip, status פעיל / הוסתר; tour: title + text, preview rendered with tour.js's format)
-- [ ] Tests: backend per kind + e2e: hide and restore a tip, fix an activity's time, edit a tour bubble and see it on the public page
-- [ ] Gate: all gates green
+- [x] `admin.html`: a tab per kind with search; the edit screen per kind (activities: every field incl. times inside the trip, status פעיל / הוסתר; tour: title + text, preview rendered with tour.js's format)
+  - done: a nav row (ממתינים · טיפים · תגובות · ציוד · פעילויות · הדרכה) on the list screens. Each kind's list: search over its texts, status chips when there is more than one status, non-current statuses marked on the card; cached per kind (`achziv-admin-list-<kind>`, cleared on logout) and refreshed in the background. The edit screen opens with a history step (back button closes it); a status the edit screen cannot set (a merged tip) shows as "(בלי שינוי)" and is not sent. Activities: day + hour + minute selects over the trip days (like the family form), ages only shown for ילדים, empty capacity = no limit, owner and joined count in the header. Tour: placeholder = built-in text, the built-in text under a details toggle, a live preview. Saving waits for the verdict, patches the cached row at once, then the list refreshes
+  - tour.js's `render()` moved to `tour-texts.js` as `tourRender_`, so the bubble and the preview share one copy (admin.html now loads tour-texts.js)
+- [x] Tests: backend per kind + e2e: hide and restore a tip, fix an activity's time, edit a tour bubble and see it on the public page
+  - done, plus: search, the status chip, the back button, a merged tip's "no change", a wrong time keeps the screen with its edits, ages cleared for לכולם, the preview's fallback to the built-in title, the change shown at once on a slow server, logout leaves no `achziv-admin*` key. 5 mutations to `admin.js` (logout keeps lists, ages not hidden, preview fallback, back button on edit, no local patch) all turned it red
+- [x] Gate: all gates green
 
 #### 4.4 Registrations
 - [ ] Actions `adminFamilies` (name, nights, people per night, updated, locked?) · `adminFamilyUpdate {user, nights, maxPeople, data}` recomputing prices with the calculator logic · `adminFamilyCancel` · `adminFamilyUnlock`; the organizers' sheet re-syncs after each
@@ -75,6 +78,7 @@
 ## 5. Log
 - 01/10/2026 — planned (this file). The 30/09 payments plan superseded.
 - 01/10/2026 — §4.1 (login) and §4.2 (waiting list + review page) built and pushed. Backend not deployed yet (§4.5).
+- 01/10/2026 — §4.3 (edit anything current: tips, comments, gear, activities, tour texts) built and pushed.
 
 ## 6. ~~The 30/09/2026 plan~~ — superseded 01/10/2026 (payments are out; see §1)
 

@@ -41,3 +41,19 @@
 .adm-merge select { display: block; width: 100%; margin: 4px 0 8px; font-size: 1rem; }
 .adm-merge .btn-secondary { border-style: solid; }
 #adm-item .subbar { top: 0; }
+
+/* §4.3: a tab per kind, the edit screen */
+.adm-nav { margin: 0 0 12px; }
+.adm-search { margin-bottom: 6px; }
+.adm-time { border: 0; padding: 0; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.adm-time legend { padding: 0; margin-bottom: 4px; }
+.adm-time select { font: inherit; font-size: 1rem; color: var(--text); background: var(--card);
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px 6px; }
+.adm-at { color: var(--muted); }
+.adm-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.adm-pair[hidden] { display: none; }
+.adm-default { margin: 0 0 12px; font-size: .92rem; color: var(--muted); }
+.adm-default summary { cursor: pointer; }
+.adm-preview { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; margin-bottom: 12px; background: var(--card); }
+.adm-preview h3 { margin: 0 0 6px; font-size: 1.05rem; }
+.adm-preview p { margin: 0 0 8px; }

@@ -69,3 +69,12 @@ var TOUR_TEXTS_ = [
   { tour: 'tips', key: 'write', title: 'כתיבת טיפ',
     text: 'יש לכם טיפ? כתבו אותו כאן. הוא יופיע באתר אחרי אישור של המארגן.' }
 ];
+
+// The text format as HTML: escaped, a paragraph per blank line, **bold**, single line breaks kept. Used by tour.js
+// for the bubbles and by admin.js for the preview, so both show the same thing.
+function tourRender_(text) {
+  var esc = function (x) { return x.replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  return String(text == null ? '' : text).replace(/\r/g, '').trim().split(/\n\s*\n/).map(function (p) {
+    return '<p>' + esc(p.trim()).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>') + '</p>';
+  }).join('');
+}
