@@ -83,3 +83,10 @@ A fifth tab, **ציוד**, with two views:
 #### 5.3 Go-live
 - [x] Yair pastes the new `Code.gs` and deploys a new version (same URL). Done 30/09/2026 (Yair: *"deployed"*)
 - [x] Live check: the `gear` action answers with the seeded list (30/09/2026: 117 items, ids 1-117 match `gear-seed.js`; read-only)
+
+#### 5.4 Per-person list with counters (Yair, 04/10/2026) — not started
+> *"i want to enhance the ציוד list 1. add any new item from this list: C:\Family\Camping\CampWebsite\docs\רשימת קמפינג כללית_261004_145323.docx 2. reorder and expand general sections - sleep exuipement: bed sheets should be expendable: סדין, ציפה, שמיכה, כרית, ציפית, מזרן... - cloths: חולצה, גופיה, מכנסיים, חזייה, תחתונים, גרביים 3. add people by name 4. each row (item - סיר) should have a counter 5. personal items: חולצה, should be selected by family member. create a buttom - same for all. if i choose 4 חולצה, i can make sure it is 4 חולצות for every family member"*
+
+Constraints carried from above: ids are sheet row ids and visitors' localStorage ticks point at them, so **never renumber** — new items are appended (next id 118+), and a general item split into specific ones keeps its id on one of them. The live list is the sheet's ציוד tab (seeded once from `gear-seed.js`), so new seed items reach the live site only through the backend (a seed-append step, or the managing page's add). Any `Code.gs` change goes on Yair's clipboard unasked.
+
+- [ ] Design + task list for this section (write before code): read the docx, diff against the 117 items, the new section order, the per-person data model (people by name in localStorage, a count per item, personal items × people with a "same for all" button), migration of existing ticks
