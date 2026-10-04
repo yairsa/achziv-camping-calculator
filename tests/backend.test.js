@@ -257,19 +257,27 @@ console.log('tips tests passed');
       tips: () => tips, comments: () => comments, gear: () => gear,
       addTip: (r) => tips.push(r), addComment: (r) => comments.push(r), addGear: (r) => gear.push(r),
       updateTip: () => {}, updateComment: () => {}, updateGear: () => {},
-      patchGear: (changed, added) => { added.forEach(r => gear.push(r)); },
+      patchGear: (changed, added) => { ctx.gearPlaceAll_(gear, added.map(r => ({ x: r, after: r._after })), g => g.id); },
       now: () => '30/09/2026 12:00'
     };
   }
-  // seed: item N is row id N, then the 1001+ block; all approved, none re-stamped
+  // seed: item N is row id N, then the 1001+ block (each placed after its `after`); none re-stamped
   const seed = P(ctx.gearSeedRows_());
   assert.strictEqual(seed.length, ctx.GEAR_SEED_.length + ctx.GEAR_SEED_MORE_.length);
-  assert.ok(seed.every((r, i) => (i < ctx.GEAR_SEED_.length ? r[0] === i + 1 : r[0] > 1000) && r.length === ctx.GEAR_HEAD.length));
+  assert.ok(seed.every(r => (r[0] <= ctx.GEAR_SEED_.length || r[0] > 1000) && r.length === ctx.GEAR_HEAD.length));
+  assert.deepStrictEqual(seed.filter(r => r[0] <= ctx.GEAR_SEED_.length).map(r => r[0]), P(ctx.GEAR_SEED_).map((g, i) => i + 1), 'starter ids out of order');
+  const SEED_BY = id => seed.find(r => r[0] === id);
+  ctx.GEAR_SEED_MORE_.forEach(m => { if (m[5]) assert.strictEqual(seed[seed.indexOf(SEED_BY(m[0])) - 1][0], m[5], 'not placed after: ' + m[0]); });
+  // §5.5: one thing per item; the hidden starter rows; status literals in gear-seed.js match the script's
+  assert.deepStrictEqual([ctx.ST.approved, ctx.ST.hidden], ['מאושר', 'הוסתר']);
+  assert.deepStrictEqual(seed.filter(r => r[1] === 'הוסתר').map(r => r[0]), Object.keys(P(ctx.GEAR_HIDDEN_)).map(Number));
+  const VISIBLE = seed.filter(r => r[1] === 'מאושר').length;
+  assert.deepStrictEqual(seed.filter(r => r[1] === 'מאושר' && /[,،]| ו[א-ת]/.test(r[3].replace(/\(.*\)/, ''))).map(r => r[3]), [], 'combined items');
   assert.strictEqual(new Set(seed.map(r => r[0])).size, seed.length, 'duplicate ids');
   const NEXT = Math.max(...seed.map(r => r[0])) + 1;
   assert.ok(seed.every(r => ctx.GEAR_SECTIONS_.includes(r[2])), 'every seed item has a known section');
   // append-only: the site went live with ids 1-101, and visitors' ticks are stored by id
-  assert.deepStrictEqual([seed[0][3], seed[100][3]], ['אוהל', 'ספר'], 'starter items were inserted or removed, not appended');
+  assert.deepStrictEqual([SEED_BY(1)[3], SEED_BY(101)[3]], ['אוהל', 'ספר'], 'starter items were inserted or removed, not appended');
   assert.strictEqual(new Set(seed.map(r => r[3])).size, seed.length, 'duplicate item names');
   const gs = gearStore(true), G = (req) => P(ctx.route(req, null, gs));
   assert.strictEqual(ctx.housekeep_(gs).stamped, 0);
@@ -277,9 +285,9 @@ console.log('tips tests passed');
   // public list: sections, items with tags split, no internals
   let pub = G({ action: 'gear' });
   assert.ok(pub.ok); assert.deepStrictEqual(pub.sections, P(ctx.GEAR_SECTIONS_));
-  assert.strictEqual(pub.items.length, seed.length);
+  assert.strictEqual(pub.items.length, VISIBLE);
   assert.deepStrictEqual(pub.items[0], { id: 1, section: 'אוהלים ומחנה', name: 'אוהל', tags: ['בסיסי'], note: '' });
-  assert.deepStrictEqual(pub.items.find(i => i.name === 'משחקי קופסה וקלפים').tags, ['ילדים', 'נוחות']);
+  assert.deepStrictEqual(pub.items.find(i => i.name === 'משחקי קופסה').tags, ['ילדים', 'נוחות']);
   assert.ok(!JSON.stringify(pub).includes('seed-'));
 
   // suggestion: pending, not public; retry does not duplicate
@@ -289,7 +297,7 @@ console.log('tips tests passed');
   assert.strictEqual(gs.gearRows.at(-1).status, 'ממתין');
   assert.strictEqual(G(sug({ name: 'שונה' })).id, NEXT);
   assert.strictEqual(gs.gearRows.length, seed.length + 1);
-  assert.strictEqual(G({ action: 'gear' }).items.length, seed.length);
+  assert.strictEqual(G({ action: 'gear' }).items.length, VISIBLE);
   // validation, bot trap, formula guard
   assert.strictEqual(G(sug({ clientId: 'gear-client-2', section: 'לא קיים' })).error, 'bad_category');
   assert.strictEqual(G(sug({ clientId: 'gear-client-2', name: 'א' })).error, 'too_short');
@@ -332,10 +340,10 @@ console.log('tips tests passed');
   const RENAMED = P(ctx.GEAR_SECTION_RENAMES_), BACK = {};
   Object.keys(RENAMED).forEach(k => { BACK[RENAMED[k]] = k; });
   // every in-place edit agrees with the current starter row it produces
-  P(ctx.GEAR_UPDATES_).forEach(u => assert.strictEqual(ctx.GEAR_SEED_[u[0] - 1][FIELDS.indexOf(u[1])], u[3], 'GEAR_UPDATES_ ' + u));
+  P(ctx.GEAR_UPDATES_).filter(u => u[1] !== 'status').forEach(u => assert.strictEqual(ctx.GEAR_SEED_[u[0] - 1][FIELDS.indexOf(u[1])], u[3], 'GEAR_UPDATES_ ' + u));
   // the v1 tab, rebuilt by undoing the edits and the renames
   function v1Tab() {
-    const rows = seed.filter(r => r[0] <= ctx.GEAR_SEED_.length).map(r => ({
+    const rows = seed.filter(r => r[0] <= ctx.GEAR_SEED_.length).sort((a, b) => a[0] - b[0]).map(r => ({
       id: r[0], status: r[1], section: BACK[r[2]] || r[2], name: r[3], tags: r[4], note: r[5], submitted: r[6], approved: r[7], clientId: r[8] }));
     P(ctx.GEAR_UPDATES_).slice().reverse().forEach(u => { rows[u[0] - 1][u[1]] = u[2]; });
     return rows;
@@ -349,7 +357,7 @@ console.log('tips tests passed');
   v1.gearRows[3].tags = 'בסיסי, ילדים';                                  // id 4: tags by hand → stay; name and section still move
   v1.gearRows.push({ id: 118, status: 'ממתין', section: 'אוכל ובישול', name: 'קומקום', tags: '', note: '', submitted: 'x', approved: '', clientId: 'cli-118' });
   let patches = 0;
-  v1.patchGear = (changed, added) => { patches++; added.forEach(r => v1.gearRows.push(r)); };
+  v1.patchGear = (changed, added) => { patches++; ctx.gearPlaceAll_(v1.gearRows, added.map(r => ({ x: r, after: r._after })), g => g.id); };
   const V = (req) => P(ctx.route(req, null, v1));
   const up = V({ action: 'gear' });
   assert.strictEqual(patches, 1, 'one batched write');
@@ -362,8 +370,11 @@ console.log('tips tests passed');
   seed.forEach(r => {
     if (r[0] === 16 || r[0] === 4) return;
     const g = byId(r[0]);
-    assert.deepStrictEqual([g.section, g.name, g.tags, g.note, g.clientId], [r[2], r[3], r[4], r[5], r[8]], 'row ' + r[0]);
+    assert.deepStrictEqual([g.status, g.section, g.name, g.tags, g.note, g.clientId], [r[1], r[2], r[3], r[4], r[5], r[8]], 'row ' + r[0]);
   });
+  // in the same order as a fresh tab (the suggestion stays where it was); the hidden rows are off the public list
+  assert.deepStrictEqual(v1.gearRows.map(g => g.id).filter(id => id !== 118), seed.map(r => r[0]));
+  assert.ok(!up.items.some(i => i.id === 63 || i.id === 65));
   assert.deepStrictEqual(up.sections, P(ctx.GEAR_SECTIONS_));
   assert.ok(up.items.some(i => i.id === 1027 && i.name === 'תוספי תזונה'));
   // idempotent: a second run (a dropped reply, the next cache miss) changes nothing

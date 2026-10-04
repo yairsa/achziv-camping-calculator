@@ -501,14 +501,15 @@ function gearRows_(ts) { return ts.gear ? ts.gear() : []; }
 // re-stamped one by one on the first edit.
 function gearSeedRows_() {
   return gearSeedList_().map(function (g) {
-    return [g[0], ST.approved, g[1], g[2], g[3], g[4], '', 'רשימה התחלתית', 'seed-' + g[0]];
+    return [g[0], GEAR_HIDDEN_[g[0]] ? ST.hidden : ST.approved, g[1], g[2], g[3], g[4], '', 'רשימה התחלתית', 'seed-' + g[0]];
   });
 }
 function gearSection_(s) { return GEAR_SECTION_RENAMES_[s] || s; }
 
-// Brings a tab seeded from an older starter list up to the current one (docs/gear-plan.md §5.4): renamed sections
-// on every row, each GEAR_UPDATES_ edit only while the cell still holds the old starter value (a hand edit wins), and
-// the GEAR_SEED_MORE_ rows that are missing (found by "seed-<id>"). Safe to run any number of times.
+// Brings a tab seeded from an older starter list up to the current one (docs/gear-plan.md §5.4-5.5): renamed sections
+// on every row, each GEAR_UPDATES_ edit (status too) only while the cell still holds the old starter value (a hand
+// edit wins), and the GEAR_SEED_MORE_ rows that are missing (found by "seed-<id>"), each placed right after its
+// `after` row. Safe to run any number of times.
 function gearUpgrade_(ts) {
   var rows = gearRows_(ts);
   if (!rows.length || !ts.patchGear) return { changed: 0, added: 0 };
@@ -527,7 +528,7 @@ function gearUpgrade_(ts) {
   });
   var added = GEAR_SEED_MORE_.filter(function (m) { return !have['seed-' + m[0]] && !byId[m[0]]; }).map(function (m) {
     return { id: m[0], status: ST.approved, section: m[1], name: m[2], tags: m[3], note: m[4], submitted: '',
-             approved: 'רשימה התחלתית', clientId: 'seed-' + m[0] };
+             approved: 'רשימה התחלתית', clientId: 'seed-' + m[0], _after: m[5] };
   });
   if (changed.length || added.length) ts.patchGear(changed, added);
   return { changed: changed.length, added: added.length };
@@ -1524,10 +1525,12 @@ function tipsStore_() {
       var sh = gearSheet(), W = GEAR_HEAD.length, n = sh.getLastRow() - 1;
       var v = n > 0 ? sh.getRange(2, 1, n, W).getValues() : [];
       changed.forEach(function (r) { v[r._row - 2] = vals(r, GEAR_COL); });
-      added.forEach(function (r) { v.push(vals(r, GEAR_COL)); r._row = v.length + 1; store.gear().push(r); });
+      gearPlaceAll_(v, added.map(function (r) { return { x: vals(r, GEAR_COL), after: r._after }; }),
+                    function (c) { return c[GEAR_COL.id]; });
       if (v.length + 1 > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), v.length + 1 - sh.getMaxRows());
       if (v.length) sh.getRange(2, 1, v.length, W).setValues(v);
       dropdown(sh, GEAR_COL.section, GEAR_SECTIONS_);
+      gearRows = null;                         // rows moved down: read them again, with their new row numbers
     },
     tour: function () {
       if (tourRows) return tourRows;

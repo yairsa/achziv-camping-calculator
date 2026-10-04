@@ -132,5 +132,30 @@ Two renames: אוהלים ולינה → אוהלים ומחנה (sleep moved ou
   - the add form offers the **server's** sections (minus hand-typed ones): until the new `Code.gs` is deployed, the live script accepts only the old names, and a new name would have been refused for good.
 - [x] Gate: `node tests/gear.e2e.js` extended (people, counters, same-for-all, per-person packing, a v1 state loads unchanged), all repo gates, 360px with no horizontal scroll; `python tools/stamp.py`
   - mutation-checked: same-for-all, the person filter, the section mapping, 0-count lines and the form's sections each turn it red. Screens checked at 360px: the per-person counters wrap one per line.
-- [ ] Go-live: `Code.gs` on Yair's clipboard; **Yair** pastes and deploys a new version
-- [ ] Live check (read-only): `gear` answers with 13 sections and the 1001+ items
+- [x] ~~Go-live: `Code.gs` on Yair's clipboard; **Yair** pastes and deploys a new version~~ — superseded by §5.5's go-live box (one deploy carries both)
+- [ ] Live check (read-only): `gear` answers with 13 sections and the 1001+ items (after §5.5's deploy)
+
+#### 5.5 Counting per member, one thing per item (Yair, 04/10/2026, after trying 5.4) — built; waiting on the backend deploy
+> *"i added the names, but i dont see the point in that. the list still doesn't allow to select "per member", so i need to actively add the number. 1. add an input field + [לכל אחד] button, set number to number of members, so easily add 1 for each. keep +-1, in case i want to fine tune. for instance: תחתונים. i set 4 and click לכל אחד. 2. remove the wording "לכל אחד" for instance: מזרן לכל אחד. should say מזרן, כובע 3. no item should be more than 1. סדין, ציפית - split to 2 items 4. when packing, i should be able to see a per memeber list, and check items per member / to all."*
+
+Why 5.4 missed: the live script is still the 30/09 one (not deployed), so the list has the old names and **no item carries the לכל אחד tag**, and 5.4 offered per-person counting only on tagged items.
+
+**Design**
+- **Any item can be counted per member**, tag or not. A ticked item shows `[−] [number] [+] [לכל אחד]` once names are added; the number can be typed. **לכל אחד** gives every member that number (תחתונים: type 4, press it, 4 each). The row then reads `לכל אחד: [−][n][+] [משותף]`, where the number still applies to everyone, and below it each member has `[−][n][+]` to fine-tune. **משותף** goes back to one count (the members' total). A לכל אחד-tagged item starts per member when ticked; the tag only sets that default.
+- **Names:** "פנס ראש לכל ילד" (63) and "כובע לכל ילד" (65) are hidden, since פנס ראש / כובע per member replace them. A visitor's tick on them moves to 82 / 21. The other "לכל אחד" names were already renamed in 5.4 and reach the sheet with the deploy.
+- **One thing per item:** every "X ו-Y" / "X, Y" item is split. The id stays on the first part; the other parts get new ids (1028+) and sit **right after it** in the list (also in the sheet). A visitor who had ticked the combined item gets the parts ticked too. Kept as one item on purpose: an alternative ("פטיש או קורנס", "מצית או גפרורים") and a group with examples in brackets ("מצרכים יבשים (פסטה, אורז, קטניות)"); "כלי עזר לבישול (מצקת, כף עץ, קערה)" is split anyway, because each is its own thing in Yair's docx.
+- **Packing:** under **כולם**, a per-member item is **one row**: its box packs it for everyone, and a box per member ("נועה ×4") packs one member's share; the row is done (and moves down) when every member's share is packed. A member's chip shows only their list, with their own boxes. Copy / WhatsApp follow the chosen view.
+
+**Tasks**
+- [x] Seed: splits (ids 1028+, placed after their original), 63 / 65 hidden, `GEAR_CARRY_` (old id → ids that inherit its tick), 1017 split into רטבים + רסק עגבניות
+  - 26 items split → 1028-1060; `gearCarry_()` is derived from the `from` column. **Gotcha:** the first pass counted ids by hand and was 2 off in ילדים (renamed צעצועי חול); redone by name lookup against the committed file, and a backend test now fails on any combined name (it caught גומיות וקליפסים, missed by hand). Placement runs in passes (`gearPlaceAll_`), because some `after` ids are defined later in the list.
+- [x] Backend: `gearUpgrade_` also hides 63 / 65 (guarded on the starter status) and inserts new rows after their original; tests
+  - `patchGear` rewrites the range in display order, then drops its row cache (rows below an insert moved). Test: an upgraded v1 tab equals a fresh tab, row for row and in order.
+- [x] Site: `[−][number][+][לכל אחד]` on every ticked item once names exist; per-member rows; משותף; typed numbers
+  - state: `mode[key]` ('each' / 'one'); a tagged item defaults to each. The top number in per-member mode applies to everyone; a member's − / + fine-tunes (`pq`).
+- [x] Site: carry ticks from a split or hidden item, once per browser (`carried` flag)
+- [x] Site: packing — one row per item under כולם with a box per member; a member's own list
+  - `×4` is in a `<bdi dir=ltr>` (RTL showed it as `4×`). A member label must not shrink: `.gitem label` (flex: 1) had overridden it, and the labels spilled out of the card.
+- [x] Gate: backend test, gear e2e (type 4 + לכל אחד on an untagged item, fine-tune, משותף, pack one member / all, carried ticks), all repo gates, 360px; stamp
+  - mutation-checked (red): לכל אחד ignored, the row box packing only itself, the carry running twice, a row counted packed when one member is, a typed number ignored, a member label allowed to shrink.
+- [ ] `Code.gs` on Yair's clipboard; Yair deploys (replaces the 5.4 go-live box)

@@ -20,8 +20,6 @@
   var sections = GEAR_SECTIONS_.slice(), items = seedItems(), live = false, started = false;
   var view = 'pick', tag = '';
   var openSecs = {};                // general list: sections opened by hand in this visit (it starts collapsed)
-  var openPer = {};                 // general list: items whose per-person counters are open
-  var lastCount = {};               // the count chosen last per item, for "אותו מספר לכולם"
   var who = '';                     // "הרשימה שלי": '' everyone, '_' shared items, or a person's pid
   function $(id) { return document.getElementById(id); }
   function say(p, text, kind) { p.textContent = text; p.className = 'msg' + (kind ? ' ' + kind : ''); }
@@ -31,7 +29,7 @@
   function writeJson(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ignore */ } }
 
   function seedItems() {
-    return gearSeedList_().map(function (g) {
+    return gearSeedList_().filter(function (g) { return !GEAR_HIDDEN_[g[0]]; }).map(function (g) {
       return { id: g[0], section: g[1], name: g[2], note: g[4],
                tags: String(g[3]).split(',').map(function (t) { return t.trim(); }).filter(Boolean) };
     });
@@ -43,16 +41,35 @@
     var s = readJson(KEY);
     if (!s || typeof s !== 'object') s = {};
     s.picked = s.picked || {}; s.packed = s.packed || {}; s.custom = s.custom || [];
-    s.people = s.people || []; s.qty = s.qty || {}; s.pq = s.pq || {};
+    s.people = s.people || []; s.qty = s.qty || {}; s.pq = s.pq || {}; s.mode = s.mode || {};
     return s;
   }
+  // Counting (gear-plan §5.5). Any item can be counted per member once names exist: mode[key] 'each' or 'one';
+  // without a mode, an item tagged לכל אחד is per member. qty = the number (the total, or each member's);
+  // pq = members whose number was fine-tuned.
   function qtyOf(s, key) { return s.qty[key] || 1; }
-  function perPerson(s, r) { return s.people.length > 0 && r.tags.indexOf(EACH) >= 0; }
+  function perPerson(s, r) {
+    if (!s.people.length) return false;
+    var m = s.mode[r.key];
+    return m ? m === 'each' : r.tags.indexOf(EACH) >= 0;
+  }
   function countFor(s, key, pid) { var m = s.pq[key]; return m && pid in m ? m[pid] : qtyOf(s, key); }
-  // an item leaves the list: its count, per-person counts and packing marks go with it
+  function members(s, r) {               // the members who take this item, with their number
+    return s.people.map(function (p) { return { p: p, n: countFor(s, r.key, p.pid) }; }).filter(function (x) { return x.n > 0; });
+  }
+  // an item leaves the list: its numbers, its mode and its packing marks go with it
   function forget(s, key) {
-    delete s.qty[key]; delete s.pq[key];
+    delete s.qty[key]; delete s.pq[key]; delete s.mode[key];
     Object.keys(s.packed).forEach(function (k) { if (k === key || k.indexOf(key + '@') === 0) delete s.packed[k]; });
+  }
+  // §5.5: a tick on an item that was split (or hidden) carries over to its parts, once per browser
+  function carry() {
+    var s = state();
+    if (s.carried) return;
+    var map = gearCarry_();
+    Object.keys(s.picked).forEach(function (id) { (map[id] || []).forEach(function (to) { s.picked[to] = 1; }); });
+    s.carried = 1;
+    save(s);
   }
   function save(s) { writeJson(KEY, s); }
   // Own items the organizer approved are now general items: carry the pick and the packing mark over.
@@ -136,23 +153,27 @@
       (r.note ? ' <small class="gnote">' + esc(r.note) + '</small>' : '') + '</label>' +
       (extra || '') + '</li>';
   }
-  // − n + ; pid '' = the item's count (for a לכל אחד item: the count for each person)
+  // [−] [number] [+] ; pid '' = the item's number (the total, or every member's); a member's own number otherwise
   function stepper(key, pid, n, label) {
     return '<span class="gstep" data-key="' + esc(key) + '" data-pid="' + esc(pid) + '">' +
       '<button type="button" class="gminus" aria-label="' + esc('פחות ' + label) + '">−</button>' +
-      '<output>' + n + '</output>' +
+      '<input type="number" class="gnum" inputmode="numeric" min="' + (pid ? 0 : 1) + '" max="' + QMAX + '" value="' + n + '"' +
+      ' aria-label="' + esc('כמות ' + label) + '">' +
       '<button type="button" class="gplus" aria-label="' + esc('עוד ' + label) + '">+</button></span>';
   }
   function counters(s, r) {
-    if (!perPerson(s, r)) return '<div class="gqty">' + stepper(r.key, '', qtyOf(s, r.key), r.name) + '</div>';
-    if (!openPer[r.key] && !s.pq[r.key]) {
-      return '<div class="gqty"><span class="glab">לכל אחד</span>' + stepper(r.key, '', qtyOf(s, r.key), r.name + ' לכל אחד') +
-        '<button type="button" class="btn-link gper" data-key="' + esc(r.key) + '">לפי אדם</button></div>';
+    var k = esc(r.key);
+    if (!s.people.length) return '<div class="gqty">' + stepper(r.key, '', qtyOf(s, r.key), r.name) + '</div>';
+    if (!perPerson(s, r)) {
+      return '<div class="gqty">' + stepper(r.key, '', qtyOf(s, r.key), r.name) +
+        '<button type="button" class="btn-secondary geach" data-key="' + k + '">לכל אחד</button></div>';
     }
-    return '<div class="gqty gper-open">' + s.people.map(function (p) {
-      return '<span class="gpp"><span class="glab">' + esc(p.name) + '</span>' +
-        stepper(r.key, p.pid, countFor(s, r.key, p.pid), r.name + ' ל' + p.name) + '</span>';
-    }).join('') + '<button type="button" class="btn-link gsame" data-key="' + esc(r.key) + '">אותו מספר לכולם</button></div>';
+    return '<div class="gqty"><span class="glab">לכל אחד:</span>' + stepper(r.key, '', qtyOf(s, r.key), r.name + ' לכל אחד') +
+      '<button type="button" class="btn-link gone" data-key="' + k + '">משותף</button></div>' +
+      '<div class="gqty gmembers">' + s.people.map(function (p) {
+        return '<span class="gpp"><span class="glab">' + esc(p.name) + '</span>' +
+          stepper(r.key, p.pid, countFor(s, r.key, p.pid), r.name + ' ל' + p.name) + '</span>';
+      }).join('') + '</div>';
   }
   function sectionBlock(name, lis, counter, open) {
     return '<details class="gsec" data-sec="' + esc(name) + '"' + (open ? ' open' : '') + '><summary><span>' + esc(name) + '</span> <small class="gcount">' + counter + '</small></summary>' +
@@ -185,21 +206,28 @@
       : 'נמצאו ' + shown + ' מתוך ' + total + ' פריטים.';
   }
 
-  // What to pack: one line per item, and for a לכל אחד item one line per person who needs it. Filtered by "who".
+  // What to pack, as rows, filtered by "who" (§5.5):
+  // - כולם: one row per item. A per-member row carries its members ({p, n, key}); its box packs everyone, and it
+  //   counts as packed when every member's share is.
+  // - a member: their share of each per-member item, one row each.  - משותף: the items counted once.
   function packLines(s) {
+    if (who && who !== '_' && !s.people.some(function (p) { return p.pid === who; })) who = '';
     var out = [];
     myRows(s).forEach(function (r) {
       if (perPerson(s, r)) {
-        s.people.forEach(function (p) {
-          var n = countFor(s, r.key, p.pid);
-          if (n > 0) out.push({ key: r.key + '@' + p.pid, row: r, person: p, n: n });
-        });
-      } else out.push({ key: r.key, row: r, n: qtyOf(s, r.key) });
+        var ms = members(s, r).map(function (x) { return { p: x.p, n: x.n, key: r.key + '@' + x.p.pid }; });
+        if (!ms.length || who === '_') return;
+        if (!who) { out.push({ key: r.key, row: r, ms: ms, n: 0 }); return; }
+        ms.forEach(function (m) { if (m.p.pid === who) out.push({ key: m.key, row: r, n: m.n }); });
+      } else if (!who || who === '_') out.push({ key: r.key, row: r, n: qtyOf(s, r.key) });
     });
-    if (who && who !== '_' && !s.people.some(function (p) { return p.pid === who; })) who = '';
-    return out.filter(function (l) { return !who || (who === '_' ? !l.person : !!l.person && l.person.pid === who); });
+    return out;
   }
-  function lineSuffix(l) { return (l.person ? ' · ' + l.person.name : '') + (l.n > 1 ? ' ×' + l.n : ''); }
+  function isPacked(s, l) { return l.ms ? l.ms.every(function (m) { return s.packed[m.key]; }) : !!s.packed[l.key]; }
+  function lineSuffix(l) { return l.n > 1 ? ' ×' + l.n : ''; }
+  function memberText(s, l, marks) {
+    return l.ms.map(function (m) { return (marks ? (s.packed[m.key] ? '✓' : '☐') : '') + m.p.name + (m.n > 1 ? ' ×' + m.n : ''); }).join(', ');
+  }
   function renderWho(s) {
     var box = $('gear-who');
     box.hidden = !s.people.length;
@@ -214,11 +242,18 @@
     allSections(lines.map(function (l) { return l.row; })).forEach(function (sec) {
       var inSec = lines.filter(function (l) { return l.row.section === sec; });
       if (!inSec.length) return;
-      var todo = inSec.filter(function (l) { return !s.packed[l.key]; }), done = inSec.filter(function (l) { return s.packed[l.key]; });
+      var todo = inSec.filter(function (l) { return !isPacked(s, l); }), done = inSec.filter(function (l) { return isPacked(s, l); });
       packed += done.length;
       html += sectionBlock(sec, todo.concat(done).map(function (l) {
-        var suf = lineSuffix(l), more = suf ? '<span class="gsuf">' + esc(suf) + '</span>' : '';
-        return itemRow(l.row, !!s.packed[l.key], 'gm-', l.row.own ? ' <span class="b">' + badge(l.row.own) + '</span>' : '', l.key, more);
+        var suf = lineSuffix(l), more = suf ? ' <bdi class="gsuf" dir="ltr">' + esc(suf.trim()) + '</bdi>' : '';
+        var extra = l.row.own ? ' <span class="b">' + badge(l.row.own) + '</span>' : '';
+        if (l.ms) {
+          extra += '<div class="gqty gmembers">' + l.ms.map(function (m) {
+            return '<label class="gmem"><input type="checkbox" data-pk="' + esc(m.key) + '"' + (s.packed[m.key] ? ' checked' : '') + '> ' +
+              '<span>' + esc(m.p.name) + (m.n > 1 ? ' <bdi dir="ltr">×' + m.n + '</bdi>' : '') + '</span></label>';
+          }).join('') + '</div>';
+        }
+        return itemRow(l.row, isPacked(s, l), 'gm-', extra, l.key, more);
       }), done.length + '/' + inSec.length, true);
     });
     $('gear-mine-list').innerHTML = html;
@@ -292,7 +327,9 @@
       var inSec = lines.filter(function (l) { return l.row.section === sec; });
       if (!inSec.length) return;
       out.push('', sec + ':');
-      inSec.forEach(function (l) { out.push((s.packed[l.key] ? '✓ ' : '☐ ') + l.row.name + lineSuffix(l)); });
+      inSec.forEach(function (l) {
+        out.push((isPacked(s, l) ? '✓ ' : '☐ ') + l.row.name + lineSuffix(l) + (l.ms ? ' — ' + memberText(s, l, l.ms.length > 1) : ''));
+      });
     });
     return out.join('\n');
   }
@@ -328,7 +365,7 @@
       if (!window.confirm('לנקות את כל הבחירות מהרשימה הכללית? פריטים אישיים שהוספתם נשארים.')) return;
       var s = state();
       s.picked = {};
-      [s.packed, s.qty, s.pq].forEach(function (m) { Object.keys(m).forEach(function (k) { if (k.charAt(0) === 'g') delete m[k]; }); });
+      [s.packed, s.qty, s.pq, s.mode].forEach(function (m) { Object.keys(m).forEach(function (k) { if (k.charAt(0) === 'g') delete m[k]; }); });
       save(s); render();
       say($('gear-pick-msg'), 'הבחירות נוקו.', 'good');
     });
@@ -342,6 +379,7 @@
     // picking (general list): a picked item shows its counter, so redraw (the part above it does not change,
     // so the page does not jump) and keep the focus on the box
     $('gear-pick-list').addEventListener('change', function (e) {
+      if (e.target.type !== 'checkbox') return;
       var li = e.target.closest('li[data-key]'); if (!li) return;
       var key = li.getAttribute('data-key'), s = state();
       if (key.charAt(0) !== 'g') { e.target.checked = true; return; }        // own items: removed with "הסרה"
@@ -351,8 +389,21 @@
       var again = $('gp-' + key); if (again) again.focus();
     });
     function refocus(sel) { var el = $('gear-pick-list').querySelector(sel); if (el) el.focus(); }
+    // a number, typed or stepped: pid '' = the item's number (for a per-member item it applies to everyone)
+    function setNumber(s, key, pid, n) {
+      if (pid) {
+        var map = s.pq[key] || {};
+        s.people.forEach(function (p) { if (!(p.pid in map)) map[p.pid] = qtyOf(s, key); });
+        map[pid] = Math.max(0, Math.min(QMAX, n));
+        s.pq[key] = map;
+      } else {
+        n = Math.max(1, Math.min(QMAX, n));
+        if (n === 1) delete s.qty[key]; else s.qty[key] = n;
+        delete s.pq[key];
+      }
+    }
     $('gear-pick-list').addEventListener('click', function (e) {
-      var t = e.target.closest && e.target.closest('.gdrop, .gminus, .gplus, .gper, .gsame');
+      var t = e.target.closest && e.target.closest('.gdrop, .gminus, .gplus, .geach, .gone');
       if (!t) return;
       var s = state(), key = t.getAttribute('data-key') || '';
       if (t.classList.contains('gdrop')) {
@@ -361,34 +412,35 @@
         forget(s, 'c' + cid);
         save(s); render(); return;
       }
-      if (t.classList.contains('gper')) { openPer[key] = true; renderPick(); refocus('.gstep[data-key="' + key + '"] .gplus'); return; }
-      if (t.classList.contains('gsame')) {
-        var m = s.pq[key] || {}, vals = Object.keys(m).map(function (k) { return m[k]; });
-        var v = lastCount[key] || Math.max.apply(null, vals.concat([qtyOf(s, key)]));
-        if (v > 0) s.qty[key] = v;
-        if (s.qty[key] === 1) delete s.qty[key];
-        delete s.pq[key]; openPer[key] = false;
+      if (t.classList.contains('geach')) {          // the number, for every member
+        s.mode[key] = 'each'; delete s.pq[key];
         save(s); renderPick();
-        refocus('.gper[data-key="' + key + '"]');
-        say($('gear-pick-msg'), v + ' לכל אחד.', 'good');
+        refocus('.gone[data-key="' + key + '"]');
+        say($('gear-pick-msg'), qtyOf(s, key) + ' לכל אחד.', 'good');
         return;
       }
-      // − / +
+      if (t.classList.contains('gone')) {           // back to one number: the members' total
+        var total = s.people.reduce(function (sum, p) { return sum + countFor(s, key, p.pid); }, 0);
+        s.mode[key] = 'one'; delete s.pq[key];
+        setNumber(s, key, '', total || 1);
+        save(s); renderPick();
+        refocus('.geach[data-key="' + key + '"]');
+        return;
+      }
       var step = t.closest('.gstep'), pid = step.getAttribute('data-pid'), d = t.classList.contains('gplus') ? 1 : -1;
       key = step.getAttribute('data-key');
-      var n;
-      if (pid) {
-        var map = s.pq[key] || {};
-        s.people.forEach(function (p) { if (!(p.pid in map)) map[p.pid] = qtyOf(s, key); });
-        n = map[pid] = Math.max(0, Math.min(QMAX, map[pid] + d));
-        s.pq[key] = map;
-      } else {
-        n = Math.max(1, Math.min(QMAX, qtyOf(s, key) + d));
-        if (n === 1) delete s.qty[key]; else s.qty[key] = n;
-      }
-      lastCount[key] = n;
+      setNumber(s, key, pid, (pid ? countFor(s, key, pid) : qtyOf(s, key)) + d);
       save(s); renderPick();
       refocus('.gstep[data-key="' + key + '"][data-pid="' + pid + '"] .' + (d > 0 ? 'gplus' : 'gminus'));
+    });
+    $('gear-pick-list').addEventListener('change', function (e) {
+      if (!e.target.classList.contains('gnum')) return;
+      var step = e.target.closest('.gstep'), key = step.getAttribute('data-key'), pid = step.getAttribute('data-pid');
+      var n = parseInt(e.target.value, 10), s = state();
+      if (isNaN(n)) { renderPick(); return; }
+      setNumber(s, key, pid, n);
+      save(s); renderPick();
+      refocus('.gstep[data-key="' + key + '"][data-pid="' + pid + '"] .gnum');
     });
 
     // family members
@@ -415,12 +467,16 @@
     });
 
     // packing: the item moves to the bottom of its section; focus follows it
+    // a member's box packs their share; the row's box packs everyone's (all the member boxes of that row)
     $('gear-mine-list').addEventListener('change', function (e) {
       var li = e.target.closest('li[data-key]'); if (!li) return;
-      var key = li.getAttribute('data-key'), s = state();
-      if (e.target.checked) s.packed[key] = 1; else delete s.packed[key];
+      var key = li.getAttribute('data-key'), s = state(), pk = e.target.getAttribute('data-pk');
+      var keys = pk ? [pk] : [].map.call(li.querySelectorAll('[data-pk]'), function (b) { return b.getAttribute('data-pk'); });
+      if (!keys.length) keys = [key];
+      keys.forEach(function (k) { if (e.target.checked) s.packed[k] = 1; else delete s.packed[k]; });
       save(s); renderMine();
-      var again = $('gm-' + key); if (again) again.focus();
+      var again = pk ? $('gear-mine-list').querySelector('[data-pk="' + pk + '"]') : document.getElementById('gm-' + key);
+      if (again) again.focus();
     });
     $('gear-who').addEventListener('click', function (e) {
       var b = e.target.closest && e.target.closest('[data-who]');
@@ -487,6 +543,7 @@
     });
   }
 
+  carry();
   init();
   render();
   $('tab-gear').addEventListener('click', start);

@@ -9,10 +9,10 @@ const CHROME = process.env.CHROME || 'C:/Program Files/Google/Chrome/Application
 const ctx = {}; vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(__dirname + '/../backend/Code.gs', 'utf8'), ctx);
 const ST = vm.runInContext('ST', ctx);
-const SEED = JSON.parse(JSON.stringify(ctx.gearSeedRows_()));
+const ALL = JSON.parse(JSON.stringify(ctx.gearSeedRows_())), SEED = ALL.filter(r => r[1] === 'מאושר');   // the visible rows
 
 function store() {
-  const tips = [], comments = [], gear = SEED.map(r => ({ id: r[0], status: r[1], section: r[2], name: r[3], tags: r[4],
+  const tips = [], comments = [], gear = ALL.map(r => ({ id: r[0], status: r[1], section: r[2], name: r[3], tags: r[4],
     note: r[5], submitted: r[6], approved: r[7], clientId: r[8] }));
   return { tips: () => tips, comments: () => comments, gear: () => gear,
            addTip: (r) => tips.push(r), addComment: (r) => comments.push(r), addGear: (r) => gear.push(r),
@@ -71,7 +71,7 @@ let ts = store(), gearOverride = null, oldBackend = false, dropNext = 0, delay =
 
   // ---- search and tag filter ----
   await page.fill('#gear-q', 'פנס');
-  assert.ok((await text('#gear-count')).startsWith('נמצאו 3 מתוך'), await text('#gear-count'));
+  assert.ok((await text('#gear-count')).startsWith('נמצאו 2 מתוך'), await text('#gear-count'));
   assert.strictEqual(await openSecs(), await page.locator('#gear-pick-list .gsec').count(), 'a search should open what it found');
   await page.fill('#gear-q', '');
   assert.strictEqual(await openSecs(), 0, 'clearing the search should fold back');
@@ -234,22 +234,25 @@ let ts = store(), gearOverride = null, oldBackend = false, dropNext = 0, delay =
   assert.ok((await page.textContent('#gear-pick-list .gsec[data-sec="אוהלים ומחנה"]')).includes('פריט ישן'));
   assert.strictEqual(await page.locator('#gear-pick-list .gsec[data-sec="אוהלים ולינה"]').count(), 0);
 
-  // ---- a counter on every picked item ----
+  // ---- a number on every picked item: typed, or − / + ----
+  let st;
   await page.click('#gear-expand');                                // open everything
   assert.strictEqual(await page.locator('li[data-key="g27"] .gstep').count(), 0, 'an unpicked item has no counter');
   await page.check('#gp-g27');                                     // סיר
-  const out = (key, pid) => page.locator('li[data-key="' + key + '"] .gstep[data-pid="' + (pid || '') + '"] output').innerText();
+  const num = (key, pid) => page.locator('li[data-key="' + key + '"] .gstep[data-pid="' + (pid || '') + '"] .gnum');
+  const val = (key, pid) => num(key, pid).inputValue();
   const plus = (key, pid) => page.click('li[data-key="' + key + '"] .gstep[data-pid="' + (pid || '') + '"] .gplus');
   const minus = (key, pid) => page.click('li[data-key="' + key + '"] .gstep[data-pid="' + (pid || '') + '"] .gminus');
-  assert.strictEqual(await out('g27'), '1');
+  const type = async (key, pid, n) => { await num(key, pid).fill(String(n)); await num(key, pid).press('Enter'); await num(key, pid).blur(); };
+  assert.strictEqual(await val('g27'), '1');
   await plus('g27'); await plus('g27');
-  assert.strictEqual(await out('g27'), '3');
+  assert.strictEqual(await val('g27'), '3');
   assert.ok(await page.evaluate(() => document.activeElement.classList.contains('gplus')), 'focus lost after +');
   await minus('g27'); await minus('g27'); await minus('g27');      // never below 1: untick to remove
-  assert.strictEqual(await out('g27'), '1');
-  await plus('g27');
-  // with no names yet, חולצה (לכל אחד) is one plain counter
-  assert.strictEqual(await page.locator('li[data-key="g16"] .gper').count(), 0);
+  assert.strictEqual(await val('g27'), '1');
+  await type('g27', '', 2);
+  assert.strictEqual(await val('g27'), '2');
+  assert.strictEqual(await page.locator('li[data-key="g27"] .geach').count(), 0, 'no names yet: no לכל אחד');
 
   // ---- family members ----
   await page.click('#gear-person-form button[type=submit]');
@@ -262,58 +265,97 @@ let ts = store(), gearOverride = null, oldBackend = false, dropNext = 0, delay =
   { const [f, i, b] = await page.evaluate(() => ['#gear-person-form', '#gear-person-name', '#gear-person-form button'].map(s => document.querySelector(s).getBoundingClientRect().width));
     assert.ok(Math.abs(i / f - 0.7) < 0.02 && Math.abs(b / f - 0.2) < 0.02, 'person form widths: ' + [f, i, b]); }
   const [noa, yoav] = (await saved()).people.map(p => p.pid);
-  // חולצה: one count for each person, then per person, then the same for all
-  assert.strictEqual(await text('li[data-key="g16"] .gqty .glab'), 'לכל אחד');
-  await plus('g16');
-  assert.strictEqual(await out('g16'), '2');
-  assert.strictEqual(await page.locator('li[data-key="g27"] .gper').count(), 0, 'a shared item is not per person');
-  await page.click('li[data-key="g16"] .gper');
-  assert.deepStrictEqual([await out('g16', noa), await out('g16', yoav)], ['2', '2']);
-  await plus('g16', yoav); await plus('g16', yoav);
-  assert.deepStrictEqual([await out('g16', noa), await out('g16', yoav)], ['2', '4']);
-  await noHScroll('per-person counters');
-  // a redraw keeps them open while they differ
-  await page.reload(); await page.click('#tab-gear'); await page.click('#gear-expand');
-  assert.deepStrictEqual([await out('g16', noa), await out('g16', yoav)], ['2', '4']);
-  // "אותו מספר לכולם" takes the number chosen last
-  await plus('g16', yoav);
-  await page.click('li[data-key="g16"] .gsame');
-  assert.strictEqual(await out('g16'), '5');
-  let st = await saved();
-  assert.deepStrictEqual([st.qty.g16, st.pq.g16], [5, undefined]);
-  // a person who does not need it: 0
-  await page.click('li[data-key="g16"] .gper');
-  for (let i = 0; i < 5; i++) await minus('g16', noa);
-  assert.strictEqual(await out('g16', noa), '0');
 
-  // ---- "הרשימה שלי": a line per person, person chips, copy follows the chosen person ----
+  // ---- §5.5: any item, type a number and press לכל אחד (Yair's תחתונים example, on an untagged item here) ----
+  assert.strictEqual(await page.locator('li[data-key="g27"] .geach').count(), 1, 'every item can go per member');
+  await page.check('#gp-g10');                                     // יריעת קרקע: no לכל אחד tag
+  await type('g10', '', 4);
+  await page.click('li[data-key="g10"] .geach');
+  assert.ok((await text('#gear-pick-msg')).includes('4 לכל אחד'));
+  assert.deepStrictEqual([await val('g10', noa), await val('g10', yoav)], ['4', '4']);
+  assert.ok(await page.evaluate(() => document.activeElement.classList.contains('gone')), 'focus lost after לכל אחד');
+  // fine-tune one member with − / +
+  await plus('g10', yoav); await minus('g10', noa); await minus('g10', noa);
+  assert.deepStrictEqual([await val('g10', noa), await val('g10', yoav)], ['2', '5']);
+  await noHScroll('per-member counters');
+  // the top number still applies to everyone
+  await type('g10', '', 3);
+  assert.deepStrictEqual([await val('g10', noa), await val('g10', yoav)], ['3', '3']);
+  await plus('g10', yoav);                                         // 3 + 4
+  // משותף: back to one number, the members' total
+  await page.click('li[data-key="g10"] .gone');
+  assert.strictEqual(await val('g10'), '7');
+  assert.strictEqual(await page.locator('li[data-key="g10"] .gmembers').count(), 0);
+  // a לכל אחד-tagged item starts per member (חולצה, ticked before 04/10), 1 each
+  assert.deepStrictEqual([await val('g16', noa), await val('g16', yoav)], ['1', '1']);
+  await type('g16', '', 4);
+  assert.deepStrictEqual([await val('g16', noa), await val('g16', yoav)], ['4', '4']);
+  await type('g16', noa, 0);                                       // a member who does not need it
+  // a redraw keeps all of it
+  await page.reload(); await page.click('#tab-gear'); await page.click('#gear-expand');
+  assert.deepStrictEqual([await val('g16', noa), await val('g16', yoav), await val('g10')], ['0', '4', '7']);
+
+  // ---- packing: one row per item, a box per member; a member's own list ----
   await page.click('#gear-view-mine');
-  const lineText = (key) => page.locator('#gear-mine-list li[data-key="' + key + '"] label').innerText();
-  assert.strictEqual(await page.locator('#gear-mine-list li[data-key="g16@' + noa + '"]').count(), 0, 'a 0 count is not packed');
-  assert.ok((await lineText('g16@' + yoav)).includes('חולצה · יואב ×5'));
-  assert.ok((await lineText('g27')).includes('סיר ×2'));
-  assert.ok((await lineText('g1')) === 'אוהל', 'a single item shows no count');
+  const row = (key) => page.locator('#gear-mine-list li[data-key="' + key + '"]');
+  assert.ok((await row('g16').innerText()).includes('יואב ×4') && !(await row('g16').innerText()).includes('נועה'), 'a 0 count is not packed: ' + JSON.stringify(await row('g16').innerText()));
+  assert.ok((await row('g10').innerText()).includes('יריעת קרקע מתחת לאוהל ×7'));
+  assert.strictEqual(await row('g1').locator('label').first().innerText(), 'אוהל', 'a single item shows no count');
   assert.ok(await page.isChecked('[id="gm-g1"]'), 'a packed mark from before 04/10 was lost');
-  await page.click('#gear-who [data-who="' + yoav + '"]');
+  // a member's box packs their share; the row is done when every member's is (שק שינה, לכל אחד)
+  await page.click('#gear-view-pick');
+  await page.check('#gp-g4');
+  await page.click('#gear-view-mine');
+  await page.check('input[data-pk="g4@' + noa + '"]');
+  assert.ok(!(await page.isChecked('[id="gm-g4"]')), 'one member packed is not the whole row');
+  await page.check('input[data-pk="g4@' + yoav + '"]');
+  assert.ok(await page.isChecked('[id="gm-g4"]'), 'every member packed: the row is packed');
+  assert.ok(await row('g4').evaluate(l => l.classList.contains('packed')));
+  // the row's box packs everyone at once
+  await page.check('[id="gm-g16"]');
+  assert.ok(await page.isChecked('input[data-pk="g16@' + yoav + '"]'));
+  await page.uncheck('[id="gm-g16"]');
+  assert.ok(!(await page.isChecked('input[data-pk="g16@' + yoav + '"]')));
+  await noHScroll('mine per member');
+  // member boxes wrap inside the card (a label once shrank under its text and spilled out of it)
+  // (the rows here are not crowded enough to show it, so check what prevents it: a member label never shrinks)
+  assert.ok(await page.evaluate(() => [...document.querySelectorAll('#gear-mine-list .gmembers')].every(m => m.scrollWidth <= m.clientWidth + 1)), 'member boxes overflow');
+  assert.ok(await page.evaluate(() => [...document.querySelectorAll('#gear-mine-list .gmem')].every(l => getComputedStyle(l).flexShrink === '0')), 'a member label can shrink under its text');
+  // a member's own list: their share of each per-member item, ticked for them
+  await page.click('#gear-who [data-who="' + noa + '"]');
   let keys2 = await mineKeys();
-  assert.ok(keys2.length > 0 && keys2.every(k => k.endsWith('@' + yoav)), 'יואב: ' + keys2);
+  assert.ok(keys2.length > 0 && keys2.every(k => k.endsWith('@' + noa)) && !keys2.includes('g16@' + noa), 'נועה: ' + keys2);
+  assert.ok(await page.isChecked('[id="gm-g4@' + noa + '"]'), 'packed for נועה in the all view, not in hers');
   await page.click('#gear-wa');
   let wa2 = decodeURIComponent(await page.getAttribute('#gear-wa', 'href'));
-  assert.ok(wa2.split('\n')[0].endsWith('— יואב') && wa2.includes('☐ חולצה · יואב ×5') && !wa2.includes('סיר'), wa2);
-  await page.check('[id="gm-g16@' + yoav + '"]');
-  assert.strictEqual(await text('#gear-progress-text'), 'ארוזים 1 מתוך ' + keys2.length);
+  assert.ok(wa2.split('\n')[0].endsWith('— נועה') && wa2.includes('✓ שק שינה') && !wa2.includes('סיר'), wa2);
   await page.click('#gear-who [data-who="_"]');
   keys2 = await mineKeys();
-  assert.ok(keys2.includes('g27') && keys2.includes('g1') && !keys2.some(k => k.includes('@')), 'משותף: ' + keys2);
-  await noHScroll('mine per person');
-  // removing a person takes their lines and packing marks
+  assert.ok(keys2.includes('g27') && keys2.includes('g10') && !keys2.includes('g4') && !keys2.some(k => k.includes('@')), 'משותף: ' + keys2);
+  await page.click('#gear-who [data-who=""]');
+  await page.click('#gear-wa');
+  wa2 = decodeURIComponent(await page.getAttribute('#gear-wa', 'href'));
+  assert.ok(wa2.includes('✓ שק שינה — ✓נועה, ✓יואב') && wa2.includes('☐ חולצה — יואב ×4'), wa2);
+  // removing a person takes their counts and packing marks
   await page.click('#gear-view-pick');
   await page.click('#gear-people-list .gpdel[data-pid="' + yoav + '"]');
   st = await saved();
   assert.ok(!Object.keys(st.packed).some(k => k.endsWith('@' + yoav)) && st.people.length === 1);
-  // unticking an item clears its count
-  await page.uncheck('#gp-g27');
-  assert.strictEqual((await saved()).qty.g27, undefined);
+  // unticking an item clears its numbers and its mode
+  await page.uncheck('#gp-g10');
+  st = await saved();
+  assert.deepStrictEqual([st.qty.g10, st.mode.g10], [undefined, undefined]);
+
+  // ---- §5.5: a tick on a split item carries to its parts, once; a hidden item's tick moves ----
+  await page.evaluate((k) => localStorage.setItem(k, JSON.stringify({ picked: { 29: 1, 63: 1 } })), LS);
+  await page.reload(); await page.click('#tab-gear');
+  st = await saved();
+  assert.deepStrictEqual(Object.keys(st.picked).map(Number).sort((a, b) => a - b), [29, 63, 82, 1031, 1032]);
+  assert.strictEqual(st.carried, 1);
+  await page.click('#gear-view-pick'); await page.click('#gear-expand'); await page.uncheck('#gp-g1031');
+  await page.reload(); await page.click('#tab-gear');
+  assert.ok(!(await saved()).picked[1031], 'the carry ran twice');
+  assert.strictEqual(await page.locator('#gp-g63').count(), 0, 'a hidden item is listed');
 
   // the live script before the 04/10 version: the add form offers only the sections it accepts
   gearOverride = { ok: true, sections: ['אוהלים ולינה', 'ביגוד', 'שונות', 'נכתב ביד'], items: [{ id: 1, section: 'אוהלים ולינה', name: 'אוהל', tags: [], note: '' }] };
