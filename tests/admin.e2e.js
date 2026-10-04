@@ -162,12 +162,12 @@ const calls = [];
 
   // ---- approve a gear item with a new section and tags: on everyone's list ----
   await page.fill('#f-name', 'פטיש גומי ליתדות');
-  await page.selectOption('#f-section', 'אוהלים ולינה');
+  await page.selectOption('#f-section', 'אוהלים ומחנה');
   await page.fill('#f-tags', 'חול, חוף');
   await page.click('#adm-item [data-decide="approved"]');
   await page.waitForFunction(() => /פריט ציוד 2 אושר/.test(document.getElementById('queue-msg').textContent));
   assert.deepStrictEqual(P(ctx.gearPublic_(ts)).items.find(g => g.id === 2),
-    { id: 2, section: 'אוהלים ולינה', name: 'פטיש גומי ליתדות', tags: ['חול', 'חוף'], note: '' });
+    { id: 2, section: 'אוהלים ומחנה', name: 'פטיש גומי ליתדות', tags: ['חול', 'חוף'], note: '' });
   assert.strictEqual(await text('#queue-state'), 'אין כרגע ממתינים לאישור.');
 
   // ---- next visit: still logged in, the cached list at once while the server is slow ----

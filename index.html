@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=6b01fb0e">
+  <link rel="stylesheet" href="style.css?v=4e66057d">
 </head>
 <body>
   <a class="skip" href="#main">דלג לתוכן</a>
@@ -297,6 +297,17 @@
       </div>
 
       <div id="gear-pick">
+        <div class="card" id="gear-people">
+          <h3>מי נוסע?</h3>
+          <p class="hint">הוסיפו את בני המשפחה, ופריטים אישיים (בגדים, מצעים, מגבת) ייספרו לכל אחד.</p>
+          <ul id="gear-people-list" class="chips gpeople"></ul>
+          <form id="gear-person-form" class="gperson-form" novalidate>
+            <label for="gear-person-name" class="sr-only">שם</label>
+            <input id="gear-person-name" type="text" maxlength="20" autocomplete="off" placeholder="שם, למשל: נועה">
+            <button type="submit" class="btn-secondary">הוספה</button>
+          </form>
+          <p id="gear-people-msg" class="msg" role="status" aria-live="polite"></p>
+        </div>
         <div class="card">
           <button type="button" id="gear-basic" class="btn-secondary">+ הוספת כל הפריטים הבסיסיים</button>
           <button type="button" id="gear-clear" class="btn-link">ניקוי כל הבחירות</button>
@@ -310,6 +321,7 @@
       <div id="gear-mine" hidden>
         <div class="card">
           <p id="gear-mine-empty" class="hint">עוד לא בחרתם פריטים. עברו ל"בחירת פריטים" וסמנו מה אתם לוקחים.</p>
+          <div id="gear-who" class="chips" role="group" aria-label="הרשימה של" hidden></div>
           <div id="gear-progress" hidden>
             <p id="gear-progress-text" class="gprog"></p>
             <progress id="gear-progress-bar" value="0" max="1" aria-labelledby="gear-progress-text"></progress>
@@ -400,8 +412,8 @@
   <script src="app.js?v=074275ae"></script>
   <script src="search.js?v=31352673"></script>
   <script src="tips.js?v=34713f3a"></script>
-  <script src="gear-seed.js?v=c6a3d750"></script>
-  <script src="gear.js?v=e1b0dcc9"></script>
+  <script src="gear-seed.js?v=e0530d9a"></script>
+  <script src="gear.js?v=002bcbe7"></script>
   <script src="acts-demo.js?v=b2f8d20b"></script>
   <script src="activities.js?v=a97023ba"></script>
   <script src="share.js?v=1d3c3429"></script>

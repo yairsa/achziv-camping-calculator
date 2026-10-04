@@ -500,13 +500,42 @@ function gearRows_(ts) { return ts.gear ? ts.gear() : []; }
 // The starter rows, as written into a new tab. "אושר" carries a label, not a date, so they are not
 // re-stamped one by one on the first edit.
 function gearSeedRows_() {
-  return GEAR_SEED_.map(function (g, i) {
-    return [i + 1, ST.approved, g[0], g[1], g[2], g[3], '', 'רשימה התחלתית', 'seed-' + (i + 1)];
+  return gearSeedList_().map(function (g) {
+    return [g[0], ST.approved, g[1], g[2], g[3], g[4], '', 'רשימה התחלתית', 'seed-' + g[0]];
   });
+}
+function gearSection_(s) { return GEAR_SECTION_RENAMES_[s] || s; }
+
+// Brings a tab seeded from an older starter list up to the current one (docs/gear-plan.md §5.4): renamed sections
+// on every row, each GEAR_UPDATES_ edit only while the cell still holds the old starter value (a hand edit wins), and
+// the GEAR_SEED_MORE_ rows that are missing (found by "seed-<id>"). Safe to run any number of times.
+function gearUpgrade_(ts) {
+  var rows = gearRows_(ts);
+  if (!rows.length || !ts.patchGear) return { changed: 0, added: 0 };
+  var byId = {}, have = {}, changed = [];
+  rows.forEach(function (g) { byId[+g.id] = g; have[g.clientId] = true; });
+  function touch(g) { if (changed.indexOf(g) < 0) changed.push(g); }
+  GEAR_UPDATES_.forEach(function (u) {
+    var g = byId[u[0]];
+    if (!g || g.clientId !== 'seed-' + u[0]) return;
+    var cell = String(g[u[1]]);
+    if (cell === u[2] || (u[1] === 'section' && cell === gearSection_(u[2]))) { g[u[1]] = u[3]; touch(g); }
+  });
+  rows.forEach(function (g) {
+    var s = gearSection_(String(g.section));
+    if (s !== String(g.section)) { g.section = s; touch(g); }
+  });
+  var added = GEAR_SEED_MORE_.filter(function (m) { return !have['seed-' + m[0]] && !byId[m[0]]; }).map(function (m) {
+    return { id: m[0], status: ST.approved, section: m[1], name: m[2], tags: m[3], note: m[4], submitted: '',
+             approved: 'רשימה התחלתית', clientId: 'seed-' + m[0] };
+  });
+  if (changed.length || added.length) ts.patchGear(changed, added);
+  return { changed: changed.length, added: added.length };
 }
 
 // Public: approved items in sheet order. Only these fields leave the sheet.
 function gearPublic_(ts) {
+  gearUpgrade_(ts);
   var sections = GEAR_SECTIONS_.slice();
   var items = gearRows_(ts).filter(function (g) { return g.status === ST.approved && String(g.name) !== ''; })
     .map(function (g) {
@@ -524,6 +553,7 @@ function submitGear_(req, ts) {
   if (req.hp) return { ok: true, id: 0 };
   var dup = gearRows_(ts).filter(function (g) { return g.clientId === clientId; })[0];
   if (dup) return { ok: true, id: +dup.id };
+  req.section = gearSection_(req.section);                // an outbox send from before a rename
   if (GEAR_SECTIONS_.indexOf(req.section) < 0) fail_('bad_category');
   var name = tipText_(String(req.name || '').replace(/\n/g, ' '), 2, GEAR_NAME_MAX);
   if (pendingCount_(ts) >= MAX_PENDING) fail_('busy');
@@ -993,7 +1023,11 @@ function adminFields_(kind, f) {
     if (has('text')) out.text = tipText_(f.text, 2, TIP_LIMITS.comment);
     if (has('author')) out.author = tipText_(f.author, 0, TIP_LIMITS.author);
   } else {
-    if (has('section')) { if (GEAR_SECTIONS_.indexOf(f.section) < 0) fail_('bad_category'); out.section = f.section; }
+    if (has('section')) {
+      var sec = gearSection_(String(f.section));
+      if (GEAR_SECTIONS_.indexOf(sec) < 0) fail_('bad_category');
+      out.section = sec;
+    }
     if (has('name')) out.name = tipText_(String(f.name).replace(/\n/g, ' '), 2, GEAR_NAME_MAX);
     if (has('tags')) {
       out.tags = String(f.tags).split(/[,،]/).map(function (t) { return t.trim(); }).filter(Boolean).join(', ');
@@ -1079,6 +1113,7 @@ function adminList_(req, ts, as, adm) {
                author: unguard_(c.author), submitted: whenText_(c.submitted), ms: when_(c.submitted) };
     }).sort(newest);
   } else if (kind === 'gear') {
+    gearUpgrade_(ts);
     items = gearRows_(ts).filter(live).map(function (g) {
       return { id: +g.id, status: keyOf_(ST, g.status), section: String(g.section), name: unguard_(g.name),
                tags: String(g.tags || ''), note: unguard_(g.note), submitted: whenText_(g.submitted), ms: when_(g.submitted) };
@@ -1484,6 +1519,16 @@ function tipsStore_() {
     gear: function () { return gearRows || (gearRows = read(gearSheet(), GEAR_COL, GEAR_HEAD.length)); },
     addGear: function (r) { add(gearSheet(), store.gear(), r, GEAR_COL); },
     updateGear: function (r) { update(gearSheet(), r, GEAR_COL, GEAR_HEAD.length); },
+    // gearUpgrade_: many rows in one write, so the script lock is held for seconds, not a call per row
+    patchGear: function (changed, added) {
+      var sh = gearSheet(), W = GEAR_HEAD.length, n = sh.getLastRow() - 1;
+      var v = n > 0 ? sh.getRange(2, 1, n, W).getValues() : [];
+      changed.forEach(function (r) { v[r._row - 2] = vals(r, GEAR_COL); });
+      added.forEach(function (r) { v.push(vals(r, GEAR_COL)); r._row = v.length + 1; store.gear().push(r); });
+      if (v.length + 1 > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), v.length + 1 - sh.getMaxRows());
+      if (v.length) sh.getRange(2, 1, v.length, W).setValues(v);
+      dropdown(sh, GEAR_COL.section, GEAR_SECTIONS_);
+    },
     tour: function () {
       if (tourRows) return tourRows;
       tourRows = readTour();

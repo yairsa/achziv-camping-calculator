@@ -19,7 +19,7 @@ function store() {
            updateTip() {}, updateComment() {}, updateGear() {}, now: () => '30/09/2026 12:00' };
 }
 const regStore = { all: () => [], put() {}, remove() {}, hash: () => '', now: () => '', nowMs: () => 0 };
-let ts = store(), oldBackend = false, dropNext = 0, delay = 0, calls = [];
+let ts = store(), gearOverride = null, oldBackend = false, dropNext = 0, delay = 0, calls = [];
 
 (async () => {
   const browser = await chromium.launch({ executablePath: CHROME, headless: true });
@@ -35,6 +35,7 @@ let ts = store(), oldBackend = false, dropNext = 0, delay = 0, calls = [];
     if (delay) await new Promise(r => setTimeout(r, delay));
     let res;
     if (oldBackend && /^(gear|submitGear)$/.test(body.action)) res = { ok: false, error: 'bad_request' };
+    else if (gearOverride && body.action === 'gear') res = gearOverride;
     else res = JSON.parse(JSON.stringify(ctx.route(body, body.action === 'summary' ? regStore : null, ts)));
     if (dropNext > 0 && body.action === 'submitGear') { dropNext--; return route.fulfill({ status: 404, contentType: 'text/html', body: '<html>not found</html>' }); }
     route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(res) });
@@ -80,9 +81,9 @@ let ts = store(), oldBackend = false, dropNext = 0, delay = 0, calls = [];
   assert.strictEqual(await page.locator('#gear-pick-list li').count(), SEED.length);
 
   // ---- pick: two by hand, then every basic item ----
-  await page.click('#gear-pick-list .gsec[data-sec="אוהלים ולינה"] summary');
+  await page.click('#gear-pick-list .gsec[data-sec="אוהלים ומחנה"] summary');
   await page.check('#gp-g1');                                     // אוהל
-  await page.check('#gp-g6');                                     // משאבה (not basic)
+  await page.check('#gp-g10');                                    // יריעת קרקע (not basic)
   assert.strictEqual(await text('#gear-view-mine'), 'הרשימה שלי (2)');
   assert.ok((await text('#gear-pick-list .gsec:first-child .gcount')).startsWith('2/'));
   const basic = SEED.filter(r => r[4].split(',').includes('בסיסי')).length;
@@ -90,11 +91,11 @@ let ts = store(), oldBackend = false, dropNext = 0, delay = 0, calls = [];
   assert.strictEqual(await text('#gear-view-mine'), 'הרשימה שלי (' + (basic + 1) + ')');
   assert.ok((await text('#gear-pick-msg')).includes('נוספו ' + (basic - 1)));
   assert.strictEqual(await openSecs(), 1, 'a redraw should keep the section opened by hand');
-  await page.uncheck('#gp-g6');
+  await page.uncheck('#gp-g10');
   assert.strictEqual(await text('#gear-view-mine'), 'הרשימה שלי (' + basic + ')');
 
   // ---- the view toggle and the filters stay on top while scrolling ----
-  for (const sec of ['ביגוד', 'אוכל ובישול', 'ים וחוף']) await page.click('#gear-pick-list .gsec[data-sec="' + sec + '"] summary');
+  for (const sec of ['ביגוד', 'מטבח ובישול', 'ים וחוף']) await page.click('#gear-pick-list .gsec[data-sec="' + sec + '"] summary');
   await page.mouse.wheel(0, 2500); await page.waitForTimeout(200);
   const tabsH = await page.evaluate(() => document.querySelector('.tabs').offsetHeight);
   assert.ok(await page.evaluate(() => window.scrollY) > 600, 'the list is too short to test scrolling');
@@ -127,7 +128,7 @@ let ts = store(), oldBackend = false, dropNext = 0, delay = 0, calls = [];
   await page.evaluate(() => window.addEventListener('click', e => { if (e.target.closest('#gear-wa')) e.preventDefault(); }, true));
   await page.click('#gear-wa');
   const wa = decodeURIComponent(await page.getAttribute('#gear-wa', 'href'));
-  assert.ok(wa.includes('אוהלים ולינה:') && wa.includes('✓ אוהל') && wa.includes('☐ שק שינה לכל אחד'), wa);
+  assert.ok(wa.includes('אוהלים ומחנה:') && wa.includes('✓ אוהל') && wa.split('\n').includes('☐ שק שינה'), wa);
 
   // ---- own item: validation, shown at once while the server is slow and drops the reply ----
   await page.click('#gear-form button[type=submit]');
@@ -215,6 +216,110 @@ let ts = store(), oldBackend = false, dropNext = 0, delay = 0, calls = [];
   await page.click('#gear-pick-list .gsec[data-sec="שונות"] summary');
   await page.click('#gear-pick-list .gdrop');
   assert.ok(!(await page.textContent('#gear-pick-list')).includes('מחכה בתור'));
+
+  // ---- §5.4: a list saved before 04/10 loads unchanged; an own item under a renamed section ----
+  const LS = 'achziv-gear-v1';
+  const saved = () => page.evaluate((k) => JSON.parse(localStorage.getItem(k)), LS);
+  await page.evaluate((k) => {
+    localStorage.clear();
+    localStorage.setItem(k, JSON.stringify({ picked: { 1: 1, 16: 1 }, packed: { g1: 1 }, custom: [{ cid: 'old1', id: null,
+      section: 'אוהלים ולינה', name: 'פריט ישן', at: 1,
+      body: { action: 'submitGear', clientId: 'old-client-1', section: 'אוהלים ולינה', name: 'פריט ישן', hp: '' } }] }));
+  }, LS);
+  await page.reload();
+  await page.click('#tab-gear');
+  assert.strictEqual(await text('#gear-view-mine'), 'הרשימה שלי (3)');
+  await page.waitForFunction(() => /הוצע למארגן/.test(document.getElementById('gear-pick-list').textContent), null, { timeout: 15000 });
+  assert.strictEqual(ts.gear().find(g => g.clientId === 'old-client-1').section, 'אוהלים ומחנה', 'an old section name reached the sheet');
+  assert.ok((await page.textContent('#gear-pick-list .gsec[data-sec="אוהלים ומחנה"]')).includes('פריט ישן'));
+  assert.strictEqual(await page.locator('#gear-pick-list .gsec[data-sec="אוהלים ולינה"]').count(), 0);
+
+  // ---- a counter on every picked item ----
+  await page.click('#gear-expand');                                // open everything
+  assert.strictEqual(await page.locator('li[data-key="g27"] .gstep').count(), 0, 'an unpicked item has no counter');
+  await page.check('#gp-g27');                                     // סיר
+  const out = (key, pid) => page.locator('li[data-key="' + key + '"] .gstep[data-pid="' + (pid || '') + '"] output').innerText();
+  const plus = (key, pid) => page.click('li[data-key="' + key + '"] .gstep[data-pid="' + (pid || '') + '"] .gplus');
+  const minus = (key, pid) => page.click('li[data-key="' + key + '"] .gstep[data-pid="' + (pid || '') + '"] .gminus');
+  assert.strictEqual(await out('g27'), '1');
+  await plus('g27'); await plus('g27');
+  assert.strictEqual(await out('g27'), '3');
+  assert.ok(await page.evaluate(() => document.activeElement.classList.contains('gplus')), 'focus lost after +');
+  await minus('g27'); await minus('g27'); await minus('g27');      // never below 1: untick to remove
+  assert.strictEqual(await out('g27'), '1');
+  await plus('g27');
+  // with no names yet, חולצה (לכל אחד) is one plain counter
+  assert.strictEqual(await page.locator('li[data-key="g16"] .gper').count(), 0);
+
+  // ---- family members ----
+  await page.click('#gear-person-form button[type=submit]');
+  assert.ok((await text('#gear-people-msg')).includes('כתבו שם'));
+  for (const n of ['נועה', 'יואב']) { await page.fill('#gear-person-name', n); await page.press('#gear-person-name', 'Enter'); }
+  await page.fill('#gear-person-name', 'נועה'); await page.press('#gear-person-name', 'Enter');
+  assert.ok((await text('#gear-people-msg')).includes('כבר ברשימה'));
+  assert.strictEqual(await page.locator('#gear-people-list li').count(), 2);
+  const [noa, yoav] = (await saved()).people.map(p => p.pid);
+  // חולצה: one count for each person, then per person, then the same for all
+  assert.strictEqual(await text('li[data-key="g16"] .gqty .glab'), 'לכל אחד');
+  await plus('g16');
+  assert.strictEqual(await out('g16'), '2');
+  assert.strictEqual(await page.locator('li[data-key="g27"] .gper').count(), 0, 'a shared item is not per person');
+  await page.click('li[data-key="g16"] .gper');
+  assert.deepStrictEqual([await out('g16', noa), await out('g16', yoav)], ['2', '2']);
+  await plus('g16', yoav); await plus('g16', yoav);
+  assert.deepStrictEqual([await out('g16', noa), await out('g16', yoav)], ['2', '4']);
+  await noHScroll('per-person counters');
+  // a redraw keeps them open while they differ
+  await page.reload(); await page.click('#tab-gear'); await page.click('#gear-expand');
+  assert.deepStrictEqual([await out('g16', noa), await out('g16', yoav)], ['2', '4']);
+  // "אותו מספר לכולם" takes the number chosen last
+  await plus('g16', yoav);
+  await page.click('li[data-key="g16"] .gsame');
+  assert.strictEqual(await out('g16'), '5');
+  let st = await saved();
+  assert.deepStrictEqual([st.qty.g16, st.pq.g16], [5, undefined]);
+  // a person who does not need it: 0
+  await page.click('li[data-key="g16"] .gper');
+  for (let i = 0; i < 5; i++) await minus('g16', noa);
+  assert.strictEqual(await out('g16', noa), '0');
+
+  // ---- "הרשימה שלי": a line per person, person chips, copy follows the chosen person ----
+  await page.click('#gear-view-mine');
+  const lineText = (key) => page.locator('#gear-mine-list li[data-key="' + key + '"] label').innerText();
+  assert.strictEqual(await page.locator('#gear-mine-list li[data-key="g16@' + noa + '"]').count(), 0, 'a 0 count is not packed');
+  assert.ok((await lineText('g16@' + yoav)).includes('חולצה · יואב ×5'));
+  assert.ok((await lineText('g27')).includes('סיר ×2'));
+  assert.ok((await lineText('g1')) === 'אוהל', 'a single item shows no count');
+  assert.ok(await page.isChecked('[id="gm-g1"]'), 'a packed mark from before 04/10 was lost');
+  await page.click('#gear-who [data-who="' + yoav + '"]');
+  let keys2 = await mineKeys();
+  assert.ok(keys2.length > 0 && keys2.every(k => k.endsWith('@' + yoav)), 'יואב: ' + keys2);
+  await page.click('#gear-wa');
+  let wa2 = decodeURIComponent(await page.getAttribute('#gear-wa', 'href'));
+  assert.ok(wa2.split('\n')[0].endsWith('— יואב') && wa2.includes('☐ חולצה · יואב ×5') && !wa2.includes('סיר'), wa2);
+  await page.check('[id="gm-g16@' + yoav + '"]');
+  assert.strictEqual(await text('#gear-progress-text'), 'ארוזים 1 מתוך ' + keys2.length);
+  await page.click('#gear-who [data-who="_"]');
+  keys2 = await mineKeys();
+  assert.ok(keys2.includes('g27') && keys2.includes('g1') && !keys2.some(k => k.includes('@')), 'משותף: ' + keys2);
+  await noHScroll('mine per person');
+  // removing a person takes their lines and packing marks
+  await page.click('#gear-view-pick');
+  await page.click('#gear-people-list .gpdel[data-pid="' + yoav + '"]');
+  st = await saved();
+  assert.ok(!Object.keys(st.packed).some(k => k.endsWith('@' + yoav)) && st.people.length === 1);
+  // unticking an item clears its count
+  await page.uncheck('#gp-g27');
+  assert.strictEqual((await saved()).qty.g27, undefined);
+
+  // the live script before the 04/10 version: the add form offers only the sections it accepts
+  gearOverride = { ok: true, sections: ['אוהלים ולינה', 'ביגוד', 'שונות', 'נכתב ביד'], items: [{ id: 1, section: 'אוהלים ולינה', name: 'אוהל', tags: [], note: '' }] };
+  await page.evaluate(() => localStorage.removeItem('achziv-gear-cache'));
+  await page.reload(); await page.click('#tab-gear');
+  await page.waitForFunction(() => document.getElementById('gear-count').textContent.startsWith('1 '), null, { timeout: 5000 }).catch(() => {});
+  const opts = await page.locator('#gear-new-sec option').evaluateAll(o => o.map(x => x.value).filter(Boolean));
+  assert.deepStrictEqual(opts, ['אוהלים ולינה', 'ביגוד', 'שונות'], 'form sections: ' + opts);
+  gearOverride = null;
 
   assert.deepStrictEqual(errors, []);
   await browser.close();

@@ -257,13 +257,16 @@ console.log('tips tests passed');
       tips: () => tips, comments: () => comments, gear: () => gear,
       addTip: (r) => tips.push(r), addComment: (r) => comments.push(r), addGear: (r) => gear.push(r),
       updateTip: () => {}, updateComment: () => {}, updateGear: () => {},
+      patchGear: (changed, added) => { added.forEach(r => gear.push(r)); },
       now: () => '30/09/2026 12:00'
     };
   }
-  // seed: item N is row id N, all approved, none re-stamped
+  // seed: item N is row id N, then the 1001+ block; all approved, none re-stamped
   const seed = P(ctx.gearSeedRows_());
-  assert.strictEqual(seed.length, ctx.GEAR_SEED_.length);
-  assert.ok(seed.every((r, i) => r[0] === i + 1 && r.length === ctx.GEAR_HEAD.length));
+  assert.strictEqual(seed.length, ctx.GEAR_SEED_.length + ctx.GEAR_SEED_MORE_.length);
+  assert.ok(seed.every((r, i) => (i < ctx.GEAR_SEED_.length ? r[0] === i + 1 : r[0] > 1000) && r.length === ctx.GEAR_HEAD.length));
+  assert.strictEqual(new Set(seed.map(r => r[0])).size, seed.length, 'duplicate ids');
+  const NEXT = Math.max(...seed.map(r => r[0])) + 1;
   assert.ok(seed.every(r => ctx.GEAR_SECTIONS_.includes(r[2])), 'every seed item has a known section');
   // append-only: the site went live with ids 1-101, and visitors' ticks are stored by id
   assert.deepStrictEqual([seed[0][3], seed[100][3]], ['אוהל', 'ספר'], 'starter items were inserted or removed, not appended');
@@ -275,16 +278,16 @@ console.log('tips tests passed');
   let pub = G({ action: 'gear' });
   assert.ok(pub.ok); assert.deepStrictEqual(pub.sections, P(ctx.GEAR_SECTIONS_));
   assert.strictEqual(pub.items.length, seed.length);
-  assert.deepStrictEqual(pub.items[0], { id: 1, section: 'אוהלים ולינה', name: 'אוהל', tags: ['בסיסי'], note: '' });
+  assert.deepStrictEqual(pub.items[0], { id: 1, section: 'אוהלים ומחנה', name: 'אוהל', tags: ['בסיסי'], note: '' });
   assert.deepStrictEqual(pub.items.find(i => i.name === 'משחקי קופסה וקלפים').tags, ['ילדים', 'נוחות']);
   assert.ok(!JSON.stringify(pub).includes('seed-'));
 
   // suggestion: pending, not public; retry does not duplicate
   const sug = (extra) => Object.assign({ action: 'submitGear', clientId: 'gear-client-1', section: 'ים וחוף', name: 'כיסא חוף' }, extra);
   let r = G(sug());
-  assert.deepStrictEqual([r.ok, r.id], [true, seed.length + 1]);
+  assert.deepStrictEqual([r.ok, r.id], [true, NEXT]);
   assert.strictEqual(gs.gearRows.at(-1).status, 'ממתין');
-  assert.strictEqual(G(sug({ name: 'שונה' })).id, seed.length + 1);
+  assert.strictEqual(G(sug({ name: 'שונה' })).id, NEXT);
   assert.strictEqual(gs.gearRows.length, seed.length + 1);
   assert.strictEqual(G({ action: 'gear' }).items.length, seed.length);
   // validation, bot trap, formula guard
@@ -299,9 +302,9 @@ console.log('tips tests passed');
   // digest lists suggested items; seen.gear stops a repeat email
   const d = P(ctx.pendingDigest_(gs, {}, 'https://sheet'));
   assert.strictEqual(d.subject, 'אכזיב: 2 ממתינים לאישור');
-  assert.ok(d.body.includes('פריטי ציוד שהוצעו (2):') && d.body.includes((seed.length + 1) + '. [ים וחוף] כיסא חוף'), d.body);
+  assert.ok(d.body.includes('פריטי ציוד שהוצעו (2):') && d.body.includes(NEXT + '. [ים וחוף] כיסא חוף'), d.body);
   assert.ok(d.body.includes('=cmd()') && !d.body.includes("'=cmd"));
-  assert.strictEqual(d.seen.gear, seed.length + 2);
+  assert.strictEqual(d.seen.gear, NEXT + 1);
   assert.strictEqual(ctx.pendingDigest_(gs, d.seen, ''), null);
 
   // approve -> public for everyone, stamped; hidden -> off the list; Yair may move it to another section
@@ -309,7 +312,7 @@ console.log('tips tests passed');
   row.status = 'מאושר'; row.section = 'ציוד כללי';
   assert.strictEqual(ctx.housekeep_(gs).stamped, 1);
   pub = G({ action: 'gear' });
-  assert.deepStrictEqual(pub.items.at(-1), { id: seed.length + 1, section: 'ציוד כללי', name: 'כיסא חוף', tags: [], note: '' });
+  assert.deepStrictEqual(pub.items.at(-1), { id: NEXT, section: 'ציוד כללי', name: 'כיסא חוף', tags: [], note: '' });
   gs.gearRows[0].status = 'הוסתר';
   assert.ok(!G({ action: 'gear' }).items.some(i => i.id === 1));
   // a section typed by hand in the sheet still shows, after the known ones
@@ -323,6 +326,53 @@ console.log('tips tests passed');
   full.tipsRows[0].status = 'נדחה';
   assert.ok(ctx.route(sug({ clientId: 'gear-cap-02' }), null, full).ok);
   assert.strictEqual(ctx.route({ action: 'submitTip', clientId: 'tip-cap-003', category: 'ציוד', title: 'כותרת', text: 'טקסט ארוך' }, null, full).error, 'busy');
+
+  // ---- upgrade of a tab seeded from the 30/09 list (gear-plan §5.4) ----
+  const FIELDS = ['section', 'name', 'tags', 'note'];
+  const RENAMED = P(ctx.GEAR_SECTION_RENAMES_), BACK = {};
+  Object.keys(RENAMED).forEach(k => { BACK[RENAMED[k]] = k; });
+  // every in-place edit agrees with the current starter row it produces
+  P(ctx.GEAR_UPDATES_).forEach(u => assert.strictEqual(ctx.GEAR_SEED_[u[0] - 1][FIELDS.indexOf(u[1])], u[3], 'GEAR_UPDATES_ ' + u));
+  // the v1 tab, rebuilt by undoing the edits and the renames
+  function v1Tab() {
+    const rows = seed.filter(r => r[0] <= ctx.GEAR_SEED_.length).map(r => ({
+      id: r[0], status: r[1], section: BACK[r[2]] || r[2], name: r[3], tags: r[4], note: r[5], submitted: r[6], approved: r[7], clientId: r[8] }));
+    P(ctx.GEAR_UPDATES_).slice().reverse().forEach(u => { rows[u[0] - 1][u[1]] = u[2]; });
+    return rows;
+  }
+  const v1 = gearStore(false);
+  v1.gearRows.push(...v1Tab());
+  assert.strictEqual(v1.gearRows[3].name, 'שק שינה לכל אחד');           // sanity: really the old list
+  assert.strictEqual(v1.gearRows[0].section, 'אוהלים ולינה');
+  // Yair's hand edits since, and a suggestion made before the rename
+  v1.gearRows[15].name = 'חולצות קצרות';                                 // id 16: renamed by hand → stays
+  v1.gearRows[3].tags = 'בסיסי, ילדים';                                  // id 4: tags by hand → stay; name and section still move
+  v1.gearRows.push({ id: 118, status: 'ממתין', section: 'אוכל ובישול', name: 'קומקום', tags: '', note: '', submitted: 'x', approved: '', clientId: 'cli-118' });
+  let patches = 0;
+  v1.patchGear = (changed, added) => { patches++; added.forEach(r => v1.gearRows.push(r)); };
+  const V = (req) => P(ctx.route(req, null, v1));
+  const up = V({ action: 'gear' });
+  assert.strictEqual(patches, 1, 'one batched write');
+  assert.strictEqual(v1.gearRows.length, seed.length + 1);
+  const byId = id => v1.gearRows.find(g => g.id === id);
+  assert.deepStrictEqual([byId(16).name, byId(16).tags], ['חולצות קצרות', 'בסיסי,לכל אחד']);
+  assert.deepStrictEqual([byId(4).name, byId(4).section, byId(4).tags], ['שק שינה', 'שינה', 'בסיסי, ילדים']);
+  assert.strictEqual(byId(118).section, 'מטבח ובישול', 'a rename reaches every row');
+  // apart from the hand edits, the upgraded tab is exactly a fresh one
+  seed.forEach(r => {
+    if (r[0] === 16 || r[0] === 4) return;
+    const g = byId(r[0]);
+    assert.deepStrictEqual([g.section, g.name, g.tags, g.note, g.clientId], [r[2], r[3], r[4], r[5], r[8]], 'row ' + r[0]);
+  });
+  assert.deepStrictEqual(up.sections, P(ctx.GEAR_SECTIONS_));
+  assert.ok(up.items.some(i => i.id === 1027 && i.name === 'תוספי תזונה'));
+  // idempotent: a second run (a dropped reply, the next cache miss) changes nothing
+  assert.deepStrictEqual(P(ctx.gearUpgrade_(v1)), { changed: 0, added: 0 }); assert.strictEqual(patches, 1);
+  // the managing page's list runs it too; a store without patchGear (old mocks) is left alone
+  assert.deepStrictEqual(P(ctx.gearUpgrade_({ gear: () => v1Tab() })), { changed: 0, added: 0 });
+  // a new suggestion takes the next id after the 1001+ block; an old section name from an outbox is mapped
+  const s2 = V({ action: 'submitGear', clientId: 'gear-client-old', section: 'אוהלים ולינה', name: 'פנס חירום' });
+  assert.deepStrictEqual([s2.ok, s2.id, v1.gearRows.at(-1).section], [true, NEXT, 'אוהלים ומחנה']);
 }
 console.log('gear tests passed');
 
@@ -704,12 +754,12 @@ console.log('admin login tests passed');
   assert.strictEqual(comments[0].approved, '', 'a rejection is not stamped as approved');
   assert.deepStrictEqual(logged.find(l => l[2] === 'comment' && l[4] === 'text').slice(5), ['מסכים', "'=cmd"]);
 
-  // approve a gear item with a new section, tags and note: on everyone's list
+  // approve a gear item with a new section, tags and note: on everyone's list (a section renamed on 04/10 is mapped)
   r = A({ action: 'adminDecide', kind: 'gear', id: 2, status: 'approved',
           fields: { section: 'אוהלים ולינה', tags: ' חול ,חוף,, ', note: 'לקרקע קשה' } });
   assert.ok(r.ok);
   assert.deepStrictEqual(P(ctx.gearPublic_(ts).items.find(g => g.id === 2)),
-    { id: 2, section: 'אוהלים ולינה', name: 'פטיש לחול', tags: ['חול', 'חוף'], note: 'לקרקע קשה' });
+    { id: 2, section: 'אוהלים ומחנה', name: 'פטיש לחול', tags: ['חול', 'חוף'], note: 'לקרקע קשה' });
 
   // the queue now holds only what is still waiting
   q = A({ action: 'adminQueue' });

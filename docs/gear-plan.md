@@ -84,7 +84,7 @@ A fifth tab, **ציוד**, with two views:
 - [x] Yair pastes the new `Code.gs` and deploys a new version (same URL). Done 30/09/2026 (Yair: *"deployed"*)
 - [x] Live check: the `gear` action answers with the seeded list (30/09/2026: 117 items, ids 1-117 match `gear-seed.js`; read-only)
 
-#### 5.4 Per-person list with counters (Yair, 04/10/2026) — not started
+#### 5.4 Per-person list with counters (Yair, 04/10/2026) — built; waiting on the backend deploy
 > *"i want to enhance the ציוד list 1. add any new item from this list: C:\Family\Camping\CampWebsite\docs\רשימת קמפינג כללית_261004_145323.docx 2. reorder and expand general sections - sleep exuipement: bed sheets should be expendable: סדין, ציפה, שמיכה, כרית, ציפית, מזרן... - cloths: חולצה, גופיה, מכנסיים, חזייה, תחתונים, גרביים 3. add people by name 4. each row (item - סיר) should have a counter 5. personal items: חולצה, should be selected by family member. create a buttom - same for all. if i choose 4 חולצה, i can make sure it is 4 חולצות for every family member"*
 
 Constraints carried from above: ids are sheet row ids and visitors' localStorage ticks point at them, so **never renumber** — new items are appended (next id 118+), and a general item split into specific ones keeps its id on one of them. The live list is the sheet's ציוד tab (seeded once from `gear-seed.js`), so new seed items reach the live site only through the backend (a seed-append step, or the managing page's add). Any `Code.gs` change goes on Yair's clipboard unasked.
@@ -102,7 +102,7 @@ Two renames: אוהלים ולינה → אוהלים ומחנה (sleep moved ou
 - שינה: שק שינה, מזרן, משאבה, כרית, שמיכה (ids 4-8) move here; "מצעים (סדין, ציפית)" (9) becomes **סדין**; new: ציפית, ציפה לשמיכה, כרית מתנפחת.
 - ביגוד: "בגדים להחלפה לכל יום" (16) becomes **חולצה**, "הלבשה תחתונה וגרביים" (17) becomes **תחתונים**; new: גופייה, מכנסיים קצרים, חזייה, גרביים, חולצה ארוכה (his "סט ארוך").
 - מטבח ובישול: "סיר ומחבת" (27) becomes **סיר** (his counter example); new: מחבת, מסננת, כוסות לשתייה חמה, פותחן בקבוקים, מפה לשולחן, מתקן ייבוש לכלים, כפפות לשטיפת כלים.
-- אוכל: the food rows move here (36, 37, 39, 40, 107-110); new: חלב או חלב צמחי, רטבים ורסק עגבניות, חלבון לבישול (נקניקיות, טופו).
+- אוכל: the food rows move here (36, 37, 39, 40, 107-111); new: חלב או חלב צמחי, רטבים ורסק עגבניות, חלבון לבישול (נקניקיות, טופו).
 - also new: אסלה ניידת, אוהל שירותים (מחנה) · סבון ידיים, קרם לחות (מקלחות) · ערכת יצירה, גירים, לגו או משחקי הרכבה, אוהל כדורים לפעוטות (ילדים) · תוספי תזונה (בטיחות).
 - left out on purpose: ערסל (no ropes between trees), מפוחית (no music), the specific remedies and foods (already general: תרופות, מצרכים יבשים, ממרחים).
 - new tag **לכל אחד** marks a per-person item: the bedding, every clothing item, בגד ים, מגבות, כפכפים למקלחת, בקבוק מים אישי, פנס ראש. ("אישי" was taken: it already labels a visitor's own item.)
@@ -118,14 +118,19 @@ Two renames: אוהלים ולינה → אוהלים ומחנה (sleep moved ou
 
 **Tasks**
 
-- [ ] `gear-seed.js`: new section order, `GEAR_SECTION_RENAMES_`, rows 1-117 edited in place, `GEAR_SEED_MORE_` (1001+), tag לכל אחד; `GEAR_UPDATES_` lists every in-place edit with its old value
-- [ ] Backend: `gearUpgrade_` (renames, guarded edits, append, dropdown) on the `gear` read and the managing page's gear list; `submitGear` and admin edits map an old section name
-- [ ] Tests in `tests/backend.test.js`: upgrade on a v1 tab, idempotent, a hand-edited cell left alone, a suggestion with an old section
-- [ ] Gate: `node tests/backend.test.js` green, `python backend/build.py --check` clean
-- [ ] Site: "מי נוסע?" names (add, remove)
-- [ ] Site: a counter on every picked item; for a לכל אחד item, per-person counters with "אותו מספר לכולם"
-- [ ] Site: "הרשימה שלי" — counts, a line per person, person chips; copy / WhatsApp follow the chosen person
-- [ ] Site: own items and outbox sends with an old section name show and send under the new one
-- [ ] Gate: `node tests/gear.e2e.js` extended (people, counters, same-for-all, per-person packing, a v1 state loads unchanged), all repo gates, 360px with no horizontal scroll; `python tools/stamp.py`
+- [x] `gear-seed.js`: new section order, `GEAR_SECTION_RENAMES_`, rows 1-117 edited in place, `GEAR_SEED_MORE_` (1001+), tag לכל אחד; `GEAR_UPDATES_` lists every in-place edit with its old value
+  - `GEAR_UPDATES_` (42 edits) was generated from the diff against the 30/09 file, not typed. `gearSeedList_()` gives the site and the backend one list (ids 1-117, then 1001-1027).
+- [x] Backend: `gearUpgrade_` (renames, guarded edits, append, dropdown) on the `gear` read and the managing page's gear list; `submitGear` and admin edits map an old section name
+  - one batched write (`patchGear`: one read, one write, the dropdown refreshed), so the one-time upgrade holds the script lock for seconds. The guard also accepts the renamed form of an old section, so a half-done run finishes cleanly. Admin adds and suggestions now take 1028+.
+- [x] Tests in `tests/backend.test.js`: upgrade on a v1 tab, idempotent, a hand-edited cell left alone, a suggestion with an old section
+  - mutation-checked: dropping the hand-edit guard, or the section renames, turns it red.
+- [x] Gate: `node tests/backend.test.js` green, `python backend/build.py --check` clean
+- [x] Site: "מי נוסע?" names (add, remove)
+- [x] Site: a counter on every picked item; for a לכל אחד item, per-person counters with "אותו מספר לכולם"
+- [x] Site: "הרשימה שלי" — counts, a line per person, person chips; copy / WhatsApp follow the chosen person
+- [x] Site: own items and outbox sends with an old section name show and send under the new one
+  - the add form offers the **server's** sections (minus hand-typed ones): until the new `Code.gs` is deployed, the live script accepts only the old names, and a new name would have been refused for good.
+- [x] Gate: `node tests/gear.e2e.js` extended (people, counters, same-for-all, per-person packing, a v1 state loads unchanged), all repo gates, 360px with no horizontal scroll; `python tools/stamp.py`
+  - mutation-checked: same-for-all, the person filter, the section mapping, 0-count lines and the form's sections each turn it red. Screens checked at 360px: the per-person counters wrap one per line.
 - [ ] Go-live: `Code.gs` on Yair's clipboard; **Yair** pastes and deploys a new version
 - [ ] Live check (read-only): `gear` answers with 13 sections and the 1001+ items
