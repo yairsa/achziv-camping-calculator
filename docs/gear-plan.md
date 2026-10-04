@@ -1,6 +1,6 @@
 # Personal equipment list — plan
 
-> **Open questions for Yair:** 1 — [Q1 sections](#q1) (not blocking: built with the proposal, easy to change).
+> **Open questions for Yair:** none (hand-kept). Q1 was answered by his 04/10 request, §5.4.
 
 **Status:** live, 30/09/2026 (Yair's brief below). The backend is deployed, and the live list is the seeded one (§5.3).
 
@@ -29,7 +29,7 @@ A fifth tab, **ציוד**, with two views:
 - **The starter list respects the site rules:** no hammock (no ropes between trees), no speaker (no music), gas bottle up to 10 kg, no glass, and notes where the campsite already provides something (charging points, fridges, carts).
 
 []()<a id="q1"></a>**Q1 — sections.** The tip categories, minus הגעה וחניה (not a packing section), plus **ביגוד** (the largest part of packing). ציוד appears as **ציוד כללי**. Order follows packing, not the tip list: אוהלים ולינה · ביגוד · אוכל ובישול · ים וחוף · מקלחות ושירותים · ילדים · בטיחות · חשמל ותאורה · סלולרי ומחשבים · ציוד כללי · שונות. OK, or change?
-<Yair: >
+<Yair: (answered by the 04/10 request: the new order is in §5.4)>
 
 ## 3. Limitations
 
@@ -89,4 +89,43 @@ A fifth tab, **ציוד**, with two views:
 
 Constraints carried from above: ids are sheet row ids and visitors' localStorage ticks point at them, so **never renumber** — new items are appended (next id 118+), and a general item split into specific ones keeps its id on one of them. The live list is the sheet's ציוד tab (seeded once from `gear-seed.js`), so new seed items reach the live site only through the backend (a seed-append step, or the managing page's add). Any `Code.gs` change goes on Yair's clipboard unasked.
 
-- [ ] Design + task list for this section (write before code): read the docx, diff against the 117 items, the new section order, the per-person data model (people by name in localStorage, a count per item, personal items × people with a "same for all" button), migration of existing ticks
+- [x] Design + task list for this section (write before code): read the docx, diff against the 117 items, the new section order, the per-person data model (people by name in localStorage, a count per item, personal items × people with a "same for all" button), migration of existing ticks
+  - live list read 04/10 (read-only): 117 approved items, max id 117.
+
+**Design (04/10/2026)**
+
+*Sections* — 13, in the order of Yair's docx (בסיס · שינה · מים · לבוש · טואלטיקה · כלי מטבח · משחקים · אוכל), then the rest:
+אוהלים ומחנה · **שינה** (new) · ים וחוף · ביגוד · מקלחות ושירותים · מטבח ובישול · ילדים · **אוכל** (new) · בטיחות · חשמל ותאורה · סלולרי ומחשבים · ציוד כללי · שונות.
+Two renames: אוהלים ולינה → אוהלים ומחנה (sleep moved out), אוכל ובישול → מטבח ובישול (food moved out). A rename applies to **every** row with the old name (Yair's own and suggested rows too), and a visitor's own item or an outbox send with an old name is mapped to the new one. This answers Q1.
+
+*Items* — ids never change; edits happen in place, new items get ids **1001+** (a separate block, because suggested rows may already hold 118+, unseen by the public read).
+- שינה: שק שינה, מזרן, משאבה, כרית, שמיכה (ids 4-8) move here; "מצעים (סדין, ציפית)" (9) becomes **סדין**; new: ציפית, ציפה לשמיכה, כרית מתנפחת.
+- ביגוד: "בגדים להחלפה לכל יום" (16) becomes **חולצה**, "הלבשה תחתונה וגרביים" (17) becomes **תחתונים**; new: גופייה, מכנסיים קצרים, חזייה, גרביים, חולצה ארוכה (his "סט ארוך").
+- מטבח ובישול: "סיר ומחבת" (27) becomes **סיר** (his counter example); new: מחבת, מסננת, כוסות לשתייה חמה, פותחן בקבוקים, מפה לשולחן, מתקן ייבוש לכלים, כפפות לשטיפת כלים.
+- אוכל: the food rows move here (36, 37, 39, 40, 107-110); new: חלב או חלב צמחי, רטבים ורסק עגבניות, חלבון לבישול (נקניקיות, טופו).
+- also new: אסלה ניידת, אוהל שירותים (מחנה) · סבון ידיים, קרם לחות (מקלחות) · ערכת יצירה, גירים, לגו או משחקי הרכבה, אוהל כדורים לפעוטות (ילדים) · תוספי תזונה (בטיחות).
+- left out on purpose: ערסל (no ropes between trees), מפוחית (no music), the specific remedies and foods (already general: תרופות, מצרכים יבשים, ממרחים).
+- new tag **לכל אחד** marks a per-person item: the bedding, every clothing item, בגד ים, מגבות, כפכפים למקלחת, בקבוק מים אישי, פנס ראש. ("אישי" was taken: it already labels a visitor's own item.)
+
+*Reaching the live sheet* — `gearUpgrade_` runs on the `gear` read (already under the script lock on a cache miss) and on the managing page's gear list: renames sections, applies each in-place edit **only if the cell still holds the old starter value** (a hand edit by Yair wins), appends the 1001+ rows (`seed-<id>` in מזהה שליחה, so it happens once), and refreshes the קטגוריה dropdown. Idempotent, so a dropped reply or a second run changes nothing.
+
+*This browser's list* — still `achziv-gear-v1`, extended, so **existing ticks need no migration**:
+- `people: [{pid, name}]` — "מי נוסע?" names, added and removed in the picking view.
+- `qty: {key: n}` — the count; absent = 1. For a לכל אחד item it is the count **per person**.
+- `pq: {key: {pid: n}}` — only when the counts differ between people. **"אותו מספר לכולם"** sets `qty` to the number just chosen and deletes `pq[key]`: 4 חולצות for everyone. 0 for a person = they don't need it.
+- with no people added, a לכל אחד item behaves like any other item.
+- packing: one line per item, and for a לכל אחד item one line **per person** (key `g12@pid`). "הרשימה שלי" gets person chips (הכל · משותף · each name), so a child's bag can be packed, copied or sent on its own.
+
+**Tasks**
+
+- [ ] `gear-seed.js`: new section order, `GEAR_SECTION_RENAMES_`, rows 1-117 edited in place, `GEAR_SEED_MORE_` (1001+), tag לכל אחד; `GEAR_UPDATES_` lists every in-place edit with its old value
+- [ ] Backend: `gearUpgrade_` (renames, guarded edits, append, dropdown) on the `gear` read and the managing page's gear list; `submitGear` and admin edits map an old section name
+- [ ] Tests in `tests/backend.test.js`: upgrade on a v1 tab, idempotent, a hand-edited cell left alone, a suggestion with an old section
+- [ ] Gate: `node tests/backend.test.js` green, `python backend/build.py --check` clean
+- [ ] Site: "מי נוסע?" names (add, remove)
+- [ ] Site: a counter on every picked item; for a לכל אחד item, per-person counters with "אותו מספר לכולם"
+- [ ] Site: "הרשימה שלי" — counts, a line per person, person chips; copy / WhatsApp follow the chosen person
+- [ ] Site: own items and outbox sends with an old section name show and send under the new one
+- [ ] Gate: `node tests/gear.e2e.js` extended (people, counters, same-for-all, per-person packing, a v1 state loads unchanged), all repo gates, 360px with no horizontal scroll; `python tools/stamp.py`
+- [ ] Go-live: `Code.gs` on Yair's clipboard; **Yair** pastes and deploys a new version
+- [ ] Live check (read-only): `gear` answers with 13 sections and the 1001+ items
