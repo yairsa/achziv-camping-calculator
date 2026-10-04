@@ -299,9 +299,12 @@ a.btn-secondary { display: inline-block; text-decoration: none; border-style: so
 .gpeople:empty { display: none; }
 .gpchip { display: inline-flex; align-items: center; gap: 4px; cursor: default; }
 .gpdel { font: inherit; font-weight: 700; background: none; border: 0; color: inherit; cursor: pointer; padding: 0 2px; min-width: 24px; min-height: 24px; }
-.gperson-form { display: flex; gap: 8px; }
-.gperson-form input { flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--card);
-  border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+/* name 70% · gap 10% · button 20% (Yair, 04/10/2026) */
+.gperson-form { display: flex; gap: 10%; }
+.gperson-form input { flex: 0 0 70%; width: 70%; min-width: 0; box-sizing: border-box; font: inherit; color: var(--text);
+  background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+.gperson-form .btn-secondary { flex: 0 0 20%; width: 20%; min-width: 0; box-sizing: border-box; padding-inline: 0;
+  border-style: solid; white-space: nowrap; }
 #gear-who[hidden] { display: none; }
 .gprog { font-weight: 700; margin: 0 0 4px; }
 #gear-progress-bar { width: 100%; height: 12px; accent-color: var(--accent); margin-bottom: 10px; }

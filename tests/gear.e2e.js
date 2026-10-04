@@ -258,6 +258,9 @@ let ts = store(), gearOverride = null, oldBackend = false, dropNext = 0, delay =
   await page.fill('#gear-person-name', 'נועה'); await page.press('#gear-person-name', 'Enter');
   assert.ok((await text('#gear-people-msg')).includes('כבר ברשימה'));
   assert.strictEqual(await page.locator('#gear-people-list li').count(), 2);
+  // name box 70%, button 20% (Yair, 04/10: the button was full width and hid the typed name)
+  { const [f, i, b] = await page.evaluate(() => ['#gear-person-form', '#gear-person-name', '#gear-person-form button'].map(s => document.querySelector(s).getBoundingClientRect().width));
+    assert.ok(Math.abs(i / f - 0.7) < 0.02 && Math.abs(b / f - 0.2) < 0.02, 'person form widths: ' + [f, i, b]); }
   const [noa, yoav] = (await saved()).people.map(p => p.pid);
   // חולצה: one count for each person, then per person, then the same for all
   assert.strictEqual(await text('li[data-key="g16"] .gqty .glab'), 'לכל אחד');
