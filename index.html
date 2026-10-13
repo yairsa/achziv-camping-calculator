@@ -1,0 +1,24 @@
+<!doctype html>
+<!-- The old address forwards to CampinGo (docs/campingo-plan.md §4.1). This file is the whole site of the repo
+     yairsa/achziv-camping-calculator, published as index.html, admin.html and 404.html (404 catches any other path).
+     The path, query and hash are kept: an old link to …/achziv-camping-calculator/admin.html#x lands on …/campingo/admin.html#x. -->
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CampinGo</title>
+  <script>
+    (function () {
+      var rest = location.pathname.replace(/^\/achziv-camping-calculator\/?/, '').replace(/^index\.html$/, '');
+      location.replace('https://yairsa.github.io/campingo/' + rest + location.search + location.hash);
+    })();
+  </script>
+  <meta http-equiv="refresh" content="0; url=https://yairsa.github.io/campingo/">
+  <link rel="canonical" href="https://yairsa.github.io/campingo/">
+  <style>body { font: 17px/1.5 Arial, sans-serif; margin: 40px 16px; text-align: center; background: #f6f5f1; color: #1f2421; }
+    @media (prefers-color-scheme: dark) { body { background: #151816; color: #ecefec; } a { color: #6cc4a8; } }</style>
+</head>
+<body>
+  <p>האתר עבר לכתובת חדשה: <a href="https://yairsa.github.io/campingo/">CampinGo</a></p>
+</body>
+</html>
